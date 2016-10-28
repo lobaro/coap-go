@@ -6,6 +6,15 @@ The **GoLang adapter** uses cgo to provide a CoAP stack based on the code of Lob
 
 ## Getting Started
 
+### Prerequisite 
+To build the project you need a C compiler and the matching [Go](https://golang.org/dl/) toolkit installed. 
+
+For Windows you can use [MinGW](http://www.mingw.org/) to install the gcc. 
+
+When you have a 32 bit C compiler make sure you also use 32 bit Go. Else cgo will not be able to compile the C code.
+
+### Install the code
+
 ```
 go get -u gitlab.com/lobaro/lobaro-coap-go
 ```
