@@ -18,9 +18,9 @@ package coap
 */
 import "C"
 import (
-	"log"
 	"unsafe"
-	"reflect"
+	"gitlab.com/lobaro/go-c-example/coapmsg"
+	"log"
 )
 
 
@@ -44,8 +44,11 @@ func init() {
 	InitMemory()
 }
 
+var coapMemory = make([]byte, 4096)
+
 func InitMemory() {
-	C.InitMemory()
+	log.Println("Allocated go memory at", unsafe.Pointer(&coapMemory))
+	C.CoAP_Init((*C.uint8_t)(unsafe.Pointer(&coapMemory)), C.int16_t(len(coapMemory)))
 }
 
 type NetSocket struct {
@@ -55,22 +58,20 @@ type NetSocket struct {
 
 // NetSocket_t* CoAP_CreateInterfaceSocket(uint8_t ifID, uint16_t LocalPort, NetReceiveCallback_fn Callback, NetTransmit_fn SendPacket)
 func CreateSocket(ifID uint8) NetSocket {
-	socket := C.CreateSocket(C.uint8_t(ifID))
-	t := reflect.TypeOf(socket)
-	log.Println("socket type:", t.String())
-	log.Println("Socket:", socket.ifID)
-	
+	socket := C.CoAP_CreateInterfaceSocket(C.uint8_t(ifID))
 	return *(*NetSocket)(unsafe.Pointer(socket))
 }
 
 // static void udp_recv_cb(char *pdata, unsigned short len) 
-func FakeReceivedAckPacketFrom(ifID uint8) {
-	msg := NewMessage()
-	msg.Type = CON
+func HandleReceivedMessage(ifID uint8, message coapmsg.Message) {
+	
+	//msg := NewMessage()
+	//msg.Type = CON
+	//msgBytes, err := msg.Bytes()
 
-	msgBytes, err := msg.Bytes()
+	msgBytes, err := message.MarshalBinary()
 	if err != nil {
 		panic(err)
 	}
-	C.ReceivedCoapPacket(C.uint8_t(ifID), (*C.char)(unsafe.Pointer(&msgBytes[0])), C.ushort(len(msgBytes)))
+	C.CoAP_ReceivedPacket(C.uint8_t(ifID), (*C.char)(unsafe.Pointer(&msgBytes[0])), C.ushort(len(msgBytes)))
 }

@@ -16,6 +16,4 @@ func main() {
 	log.Println("Creating CoAP socket")
 	coap.CreateSocket(1)
 	//log.Println("Hello Lobaro ", sub.Bar())
-
-	coap.FakeReceivedAckPacketFrom(1)
 }

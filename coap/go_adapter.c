@@ -7,11 +7,6 @@
 #include "coap.h"
 #include "go_adapter.h"
 
-/*
-NetSocket_t* GetFreeInterface() {
-}
-*/
-
 //-------------------------------------------------------------------------
 //Implementation for these function prototypes must be provided externally:
 //-------------------------------------------------------------------------
@@ -48,13 +43,9 @@ bool hal_nonVolatile_WriteBuf(uint8_t* data, uint32_t len){
 
 //CoAP_Result_t  CoAP_Init(uint8_t* pMemory, int16_t MemorySize);
 
-void InitMemory() {
-    static uint8_t memmory[4096];
-    CoAP_Init(memmory, 4096);
-}
 
 // A message was received, tell the stack to handle it
-void ReceivedCoapPacket(uint8_t fromIfID, char *pdata, unsigned short len) {
+void CoAP_ReceivedPacket(uint8_t fromIfID, char *pdata, unsigned short len) {
 	NetPacket_t		Packet;
 	NetSocket_t* 	pSocket=NULL;
 
@@ -80,30 +71,22 @@ void ReceivedCoapPacket(uint8_t fromIfID, char *pdata, unsigned short len) {
 	//the packet is only valid during runtime of consuming function!
 	//-> so it has to copy relevant data if needed
 	// or parse it to a higher level and store this result!
+	// TODO: The packet needs the endpoint, but the endpoint is already at the socket. Handle that internally!
 	pSocket->RxCB(pSocket->ifID, &Packet);
 
 	return;
 }
 
-NetSocket_t* CreateSocket(uint8_t ifID) {
-    return CoAP_CreateInterfaceSocket(ifID, 8081, CoAP_onNewPacketHandler, CoAP_SendPacket);
-}
-
 // typedef void ( * NetReceiveCallback_fn )(uint8_t ifID, NetPacket_t* pckt);
 // Callback can be CoAP_onNewPacketHandler to use the stack
 // SendPacket can be CoAP_SendPacket
-NetSocket_t* CoAP_CreateInterfaceSocket(uint8_t ifID, uint16_t LocalPort, NetReceiveCallback_fn Callback, NetTransmit_fn SendPacket)
+NetSocket_t* CoAP_CreateInterfaceSocket(uint8_t ifID)
 {
 	NetSocket_t* pSocket;
 
 	pSocket=RetrieveSocket2(ifID);
 	if(pSocket != NULL) {
 		ERROR("CoAP_ESP8266_CreateInterfaceSocket(): interface ID already in use!\r\n");
-		return NULL;
-	}
-
-	if(Callback == NULL || SendPacket == NULL) {
-		ERROR("CoAP_ESP8266_CreateInterfaceSocket(): packet rx & tx functions must be provided!\r\n");
 		return NULL;
 	}
 
@@ -114,27 +97,23 @@ NetSocket_t* CoAP_CreateInterfaceSocket(uint8_t ifID, uint16_t LocalPort, NetRec
 	}
 
 //local side of socket
-	//struct ip_info LocalIpInfo;
 	pSocket->EpLocal.NetType = IPV4;
-	pSocket->EpLocal.NetPort = LocalPort;
+	pSocket->EpLocal.NetPort = 5683; // 5683 is the default port due to rfc7252 6.1. (5684 for coaps)
 
 //remote side of socket
 	pSocket->EpRemote.NetType = IPV4;
-	pSocket->EpRemote.NetPort = LocalPort; 		//varies with requester, not known yet
+	pSocket->EpRemote.NetPort = 5683; 		//varies with requester, not known yet
 	pSocket->EpRemote.NetAddr.IPv4.u32[0] = 1; // TODO real addr
-
-//assign socket identification IDs (handle=internal, ifID=external)
-	//create ESP8266 udp connection
 
 	//pSocket->Handle = (void*) (ifID); //external  to CoAP Stack
 	pSocket->ifID = ifID; //internal  to CoAP Stack
 
 //user callback registration
-	pSocket->RxCB = Callback;
-	pSocket->Tx = SendPacket;
+	pSocket->RxCB = CoAP_onNewPacketHandler;
+	pSocket->Tx = CoAP_SendPacket;
 	pSocket->Alive = true;
 
-	INFO("- CoAP_ESP8266_CreateInterfaceSocket(): listening... IfID: %d  Port: %d\r\n",ifID, LocalPort);
+	INFO("- CoAP_ESP8266_CreateInterfaceSocket(): listening... IfID: %d \r\n",ifID);
 	return pSocket;
 }
 
@@ -142,16 +121,14 @@ NetSocket_t* CoAP_CreateInterfaceSocket(uint8_t ifID, uint16_t LocalPort, NetRec
 // Responsible for actually sending the packet
 bool CoAP_SendPacket(uint8_t ifID, NetPacket_t* pckt)
 {
-	if(pckt->Receiver.NetType != IPV4){
-		ERROR("CoAP_ESP8266_SendDatagram(...): Wrong NetType!\r\n");
-		return false;
-	}
-
+    INFO("CoAP_SendPacket: Tell go to send the package\r\n");
+    Go_SendPacket(ifID, pckt);
+    
 	NetSocket_t* pSocket;
 	pSocket=RetrieveSocket2(ifID);
 
 	if(pSocket == NULL) {
-		ERROR("CoAP_ESP8266_SendDatagram(...): InterfaceID not found!\r\n");
+		ERROR("CoAP_SendPacket(...): InterfaceID not found!\r\n");
 		return false;
 	}
 }

@@ -26,6 +26,7 @@ CoAP_t CoAP = {.pInteractions = NULL, .receiveBlocked=NULL};
 CoAP_Result_t _rom CoAP_Init(uint8_t* pMemory, int16_t MemorySize)
 {
 	INFO("CoAP_init!\r\n");
+	INFO("CoAP Available memory: %d bytes at 0x%x\r\n",MemorySize, pMemory);
 	INFO("CoAP Interaction size: %d byte\r\n",sizeof(CoAP_Interaction_t));
 	INFO("CoAP_Res_t size: %d byte\r\n",sizeof(CoAP_Res_t));
 	INFO("CoAP_Message_t size: %d byte\r\n",sizeof(CoAP_Message_t));
@@ -192,7 +193,7 @@ static CoAP_Result_t _rom SendResp(CoAP_Interaction_t* pIA, CoAP_InteractionStat
 
 		pIA->State = nextIAState; //move to next state
 
-		CoAP_EnqueueLastInteraction(pIA); //(re)enqueue interaction for further processing//todo: in die äußere statemachine
+		CoAP_EnqueueLastInteraction(pIA); //(re)enqueue interaction for further processing//todo: in die ï¿½uï¿½ere statemachine
 
 	}else { //unexspected internal failure todo: try at least to send 4 byte RESP_INTERNAL_SERVER_ERROR_5_00
 		INFO("(!!!) SendResp(): Internal socket error on sending response! MiD: %d", pIA->pReqMsg->MessageID );
@@ -213,7 +214,7 @@ static CoAP_Result_t _rom SendReq(CoAP_Interaction_t* pIA, CoAP_InteractionState
 
 		pIA->State = nextIAState; //move to next state
 
-		CoAP_EnqueueLastInteraction(pIA); //(re)enqueue interaction for further processing//todo: in die äußere statemachine
+		CoAP_EnqueueLastInteraction(pIA); //(re)enqueue interaction for further processing//todo: in die ï¿½uï¿½ere statemachine
 
 	}else { //unexspected internal failure todo: try at least to send 4 byte RESP_INTERNAL_SERVER_ERROR_5_00
 		INFO("(!!!) SendReq(): Internal socket error on sending response! MiD: %d", pIA->pReqMsg->MessageID );
