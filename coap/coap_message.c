@@ -216,9 +216,9 @@ CoAP_Result_t _rom CoAP_ParseMessageFromDatagram(uint8_t* srcArr, uint16_t srcAr
 //Options (if any)
 	uint8_t* pPayloadBegin = NULL;
 
-	//this allocates memory for every option and puts it in die pOptionsList linked list
+	//this allocates memory for every option and puts it in the pOptionsList linked list
 	//start address of payload also given back
-	CoAP_Result_t ParseOptionsResult = parse_OptionsFromRaw(&(srcArr[offset]), srcArrLength-offset, &pPayloadBegin, &(Msg.pOptionsList));
+	CoAP_Result_t ParseOptionsResult = parse_OptionsFromRaw(&(srcArr[offset]), srcArrLength - offset, &pPayloadBegin, &(Msg.pOptionsList));
 
 	if(ParseOptionsResult != COAP_OK) {
 		CoAP_FreeOptionList(&(Msg.pOptionsList));

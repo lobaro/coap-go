@@ -176,7 +176,10 @@ CoAP_Result_t _rom parse_OptionsFromRaw(uint8_t* srcArr, uint16_t srcLength, uin
 	*pPayloadBeginInSrc = NULL;
 
 	if(srcLength == 0) return COAP_OK;
-	if(srcArr[0]==0xff) return COAP_PARSE_MESSAGE_FORMAT_ERROR;
+	if(srcArr[0]==0xff) {
+		INFO("CoAP-Parse Error: srcArr[0]==0xff\r\n");
+		return COAP_PARSE_MESSAGE_FORMAT_ERROR;
+	}
 
 	uint16_t lastOptionNumber = 0; //used for delta calculations of optionnumbers
 
@@ -190,7 +193,10 @@ CoAP_Result_t _rom parse_OptionsFromRaw(uint8_t* srcArr, uint16_t srcLength, uin
 	{
 		if(srcArr[offset] == 0xff) //Payload Marker
 		{
-			if( (srcLength-offset) < 2 ) 	return COAP_PARSE_MESSAGE_FORMAT_ERROR; //at least one byte payload must follow to the payload marker
+			if( (srcLength-offset) < 2 ) {
+				INFO("CoAP-Parse Error: at least one byte payload must follow to the payload marker\r\n");
+				return COAP_PARSE_MESSAGE_FORMAT_ERROR; //at least one byte payload must follow to the payload marker
+			}
 
 			 *pPayloadBeginInSrc = &(srcArr[offset+1]);
 			 return COAP_OK;
@@ -215,7 +221,10 @@ CoAP_Result_t _rom parse_OptionsFromRaw(uint8_t* srcArr, uint16_t srcLength, uin
 				currOptDelta = ((((uint16_t)srcArr[offset]) << 8)  |  ((uint16_t)srcArr[offset+1])) + 269;
 				offset+=2;
 			}
-			else if(currOptDeltaField == 15) return COAP_PARSE_MESSAGE_FORMAT_ERROR;
+			else if(currOptDeltaField == 15) {
+				INFO("CoAP-Parse Error: Option Delta extended currOptDeltaField == 15\r\n");
+				return COAP_PARSE_MESSAGE_FORMAT_ERROR;
+			}
 
 		   //Option Length extended (if any)
 			if(currOptLengthField == 13)
@@ -228,10 +237,19 @@ CoAP_Result_t _rom parse_OptionsFromRaw(uint8_t* srcArr, uint16_t srcLength, uin
 				currOptLength = ((((uint16_t)srcArr[offset]) << 8)  |  ((uint16_t)srcArr[offset+1])) + 269;
 				offset+=2;
 			}
-			else if(currOptLengthField == 15) return COAP_PARSE_MESSAGE_FORMAT_ERROR;
+			else if(currOptLengthField == 15) {
+				INFO("CoAP-Parse Error: Option Length extended currOptDeltaField == 15\r\n");
+				return COAP_PARSE_MESSAGE_FORMAT_ERROR;
+			}
 
-			if(currOptLength > MAX_OPTION_VALUE_SIZE) 	return COAP_PARSE_MESSAGE_FORMAT_ERROR; // COAP_PARSE_TOO_LONG_OPTION;
-			if( (srcLength-offset) < currOptLength ) 	return COAP_PARSE_MESSAGE_FORMAT_ERROR;//COAP_PARSE_DATAGRAM_TOO_SHORT;
+			if(currOptLength > MAX_OPTION_VALUE_SIZE) 	{
+				INFO("CoAP-Parse Error: COAP_PARSE_TOO_LONG_OPTION\r\n");
+				return COAP_PARSE_MESSAGE_FORMAT_ERROR; // COAP_PARSE_TOO_LONG_OPTION;
+			}
+			if( (srcLength-offset) < currOptLength ) 	{
+				INFO("CoAP-Parse Error: COAP_PARSE_DATAGRAM_TOO_SHORT\r\n");
+				return COAP_PARSE_MESSAGE_FORMAT_ERROR;//COAP_PARSE_DATAGRAM_TOO_SHORT;}
+			}
 
 			lastOptionNumber  = currOptDelta + lastOptionNumber;
 

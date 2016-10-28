@@ -114,7 +114,10 @@ CoAP_Result_t _rom GetBlockOptionFromMsg(CoAP_Message_t* msg, CoAP_blockwise_opt
 
 	   		  BlkOption->Type = Type;
 
-	   		  if(pOption->Length > 3) return COAP_PARSE_MESSAGE_FORMAT_ERROR;
+	   		  if(pOption->Length > 3) {
+	   		  	INFO("CoAP-Parse Error: pOption->Length > 3\r\n");
+	   		  	return COAP_PARSE_MESSAGE_FORMAT_ERROR;
+	   		  }
 
 	   			if(ValLength == 0)
 	   			{
@@ -137,7 +140,10 @@ CoAP_Result_t _rom GetBlockOptionFromMsg(CoAP_Message_t* msg, CoAP_blockwise_opt
 	   			}
 
 	   			uint8_t SZX = OptionValue & 7;
-	   			if(SZX == 7) return COAP_PARSE_MESSAGE_FORMAT_ERROR; //must lead to 4.00 Bad Request!
+	   			if(SZX == 7) {
+	   				INFO("CoAP-Parse Error: SZX == 7 :: must lead to 4.00 Bad Request! \r\n");
+	   				return COAP_PARSE_MESSAGE_FORMAT_ERROR; //must lead to 4.00 Bad Request!}
+	   			}
 	   			BlkOption->BlockSize = 1<<(SZX+4);
 
 	   			if(OptionValue & 8) BlkOption->MoreFlag = true;

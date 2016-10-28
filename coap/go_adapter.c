@@ -15,9 +15,11 @@
 //Uart/Display function to print debug/status messages to
 void hal_uart_puts(char *s) {
 	printf("%s",s);
+	fflush(stdout);
 }
 void hal_uart_putc(char c){
 	printf("%c",c);
+	fflush(stdout);
 }
 
 //1Hz Clock used by timeout logic
@@ -61,8 +63,58 @@ void CoAP_ReceivedPacket(uint8_t fromIfID, char *pdata, unsigned short len) {
 //packet data
 	Packet.pData = pdata;
 	Packet.size = len;
+	
+	// TODO: use real endpoints
+	Packet.Sender.NetPort = 5683; 
+    Packet.Sender.NetType = IPV4;
+	Packet.Receiver.NetPort = pSocket->EpLocal.NetPort;
+    Packet.Receiver.NetType = IPV4;
 
 //Sender
+
+//meta info
+	Packet.MetaInfo.Type = META_INFO_NONE;
+
+	//call the consumer of this socket
+	//the packet is only valid during runtime of consuming function!
+	//-> so it has to copy relevant data if needed
+	// or parse it to a higher level and store this result!
+	// TODO: The packet needs the endpoint, but the endpoint is already at the socket. Handle that internally!
+	pSocket->RxCB(pSocket->ifID, &Packet);
+
+	return;
+}
+
+void CoAP_ReceivedUdp4Packet(uint8_t fromIfID, uint8_t* remoteIp, uint16_t remotePort, char *pdata, unsigned short len) {
+	NetPacket_t		Packet;
+	NetSocket_t* 	pSocket=NULL;
+
+
+//get socket by handle
+	pSocket = RetrieveSocket2(fromIfID);
+
+	if(pSocket == NULL){
+		ERROR("Corresponding Socket not found!\r\n");
+		return;
+	}
+
+//packet data
+	Packet.pData = pdata;
+	Packet.size = len;
+	
+	NetAddr_t remoteNetAddr;
+	remoteNetAddr.IPv4.u8[0] = remoteIp[0];
+	remoteNetAddr.IPv4.u8[1] = remoteIp[1];
+	remoteNetAddr.IPv4.u8[2] = remoteIp[2];
+	remoteNetAddr.IPv4.u8[3] = remoteIp[3];
+	
+    Packet.Sender.NetType = IPV4;
+	Packet.Sender.NetAddr = remoteNetAddr;  // TODO: Copy ip to C managed memory
+	Packet.Sender.NetPort = remotePort;
+	 
+    Packet.Receiver.NetType = IPV4;
+	Packet.Receiver.NetAddr = pSocket->EpLocal.NetAddr;
+	Packet.Receiver.NetPort = pSocket->EpLocal.NetPort;
 
 //meta info
 	Packet.MetaInfo.Type = META_INFO_NONE;
@@ -101,9 +153,9 @@ NetSocket_t* CoAP_CreateInterfaceSocket(uint8_t ifID)
 	pSocket->EpLocal.NetPort = 5683; // 5683 is the default port due to rfc7252 6.1. (5684 for coaps)
 
 //remote side of socket
-	pSocket->EpRemote.NetType = IPV4;
-	pSocket->EpRemote.NetPort = 5683; 		//varies with requester, not known yet
-	pSocket->EpRemote.NetAddr.IPv4.u32[0] = 1; // TODO real addr
+	//pSocket->EpRemote.NetType = IPV4;
+	//pSocket->EpRemote.NetPort = 5683; 		//varies with requester, not known yet
+	//pSocket->EpRemote.NetAddr.IPv4.u32[0] = 1; // TODO real addr
 
 	//pSocket->Handle = (void*) (ifID); //external  to CoAP Stack
 	pSocket->ifID = ifID; //internal  to CoAP Stack
@@ -113,7 +165,7 @@ NetSocket_t* CoAP_CreateInterfaceSocket(uint8_t ifID)
 	pSocket->Tx = CoAP_SendPacket;
 	pSocket->Alive = true;
 
-	INFO("- CoAP_ESP8266_CreateInterfaceSocket(): listening... IfID: %d \r\n",ifID);
+	INFO("- CoAP_CreateInterfaceSocket(): listening... IfID: %d \r\n",ifID);
 	return pSocket;
 }
 
@@ -121,14 +173,6 @@ NetSocket_t* CoAP_CreateInterfaceSocket(uint8_t ifID)
 // Responsible for actually sending the packet
 bool CoAP_SendPacket(uint8_t ifID, NetPacket_t* pckt)
 {
-    INFO("CoAP_SendPacket: Tell go to send the package\r\n");
-    Go_SendPacket(ifID, pckt);
-    
-	NetSocket_t* pSocket;
-	pSocket=RetrieveSocket2(ifID);
-
-	if(pSocket == NULL) {
-		ERROR("CoAP_SendPacket(...): InterfaceID not found!\r\n");
-		return false;
-	}
+	NetAddr_t* addr = &pckt->Receiver.NetAddr;
+    Go_SendPacket(ifID, (uint8_t*)addr, pckt->Receiver.NetPort, pckt);
 }

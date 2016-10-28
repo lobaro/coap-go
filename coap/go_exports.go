@@ -6,7 +6,7 @@ package coap
 import "C"
 import (
 	"unsafe"
-	"gitlab.com/lobaro/go-c-example/coapmsg"
+	"net"
 )
 
 
@@ -28,24 +28,23 @@ type netPacket struct {
 	size uint16
 }
 
-var SendMessageHandler func(ifId uint8, packet coapmsg.Message)
 
+// uint8_t i, NetPacket_t* pckt
 //export Go_SendPacket
-func Go_SendPacket(ifId C.uchar, packetPtr unsafe.Pointer) {
+func Go_SendPacket(ifId C.uchar, targetIp unsafe.Pointer, port uint16,  packetPtr unsafe.Pointer) {
+	ipBytes := C.GoBytes(targetIp, 4)
+	
+	addr := net.UDPAddr{
+		IP: net.IP(ipBytes),
+		Port: int(port),
+	}
+	
+	// TODO use C.NetPacket_t or similiar for safer cast
 	p := *(*netPacket)(packetPtr)
-	msgBytes := make([]byte, p.size)
-	for i := uint16(0); i < p.size; i++ {
-		msgBytes[i] =  *(*byte)(unsafe.Pointer(uintptr(p.data) + uintptr(i)))
+	msgBytes := C.GoBytes(p.data, C.int(p.size))
+	PendingResponses <- Response{
+		IfId: uint8(ifId),
+		Message: msgBytes,
+		Address: &addr,
 	}
-
-	msg, err := coapmsg.ParseMessage(msgBytes)
-	if err != nil {
-		panic(err)
-	}
-
-	if SendMessageHandler == nil {
-		panic("You have to set coap.SendMessageHandler")
-	}
-	// TODO: Use channel
-	SendMessageHandler(uint8(ifId), msg)
 }
