@@ -99,12 +99,8 @@ type NetEp_t struct {
 }
 
 func HandleReceivedUdp4Message(ifID uint8, addr *net.UDPAddr, msgBytes []byte) {
-	//o := CoAP_ResOpts_t{}
-	//opts := *(*C.CoAP_ResOpts_t)(unsafe.Pointer(&o))
-	
-	cAdrrBytes := (*C.uint8_t)(C.CBytes(addr.IP.To4()))
-	
-	// TODO: free CBytes
+	ipAddr := addr.IP.To4()
+	cAdrrBytes := C.NetAddr_t{ipAddr[0], ipAddr[1], ipAddr[2], ipAddr[3]}
 	C.CoAP_ReceivedUdp4Packet(C.uint8_t(ifID), cAdrrBytes, C.uint16_t(addr.Port), (*C.char)(unsafe.Pointer(&msgBytes[0])), C.ushort(len(msgBytes)))
 }
 

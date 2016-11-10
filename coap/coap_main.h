@@ -36,6 +36,11 @@
 #define DEFAULT_LEISURE (5) //todo implement
 #define PROBING_RATE (1) 		//[client]
 
+typedef struct {
+  	void (*Foo)(uint8_t ifID, NetPacket_t* pckt);
+} CoAP_Init_t;
+
+
 //#####################
 // Receive of packets
 //#####################

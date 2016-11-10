@@ -96,8 +96,8 @@ NetSocket_t* GetFreeInterface();
 //Implementation for these function prototypes must be provided externally:
 //-------------------------------------------------------------------------
 //Uart/Display function to print debug/status messages to
-void hal_uart_puts(char *s);
-void hal_uart_putc(char c);
+void hal_debug_puts(char *s);
+void hal_debug_putc(char c);
 //1Hz Clock used by timeout logic
 uint32_t hal_rtc_1Hz_Cnt(void);
 //Non volatile memory e.g. flash/sd-card/eeprom

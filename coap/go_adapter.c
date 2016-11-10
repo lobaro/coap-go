@@ -13,12 +13,12 @@
 
 //implement internaly used functions (see also lobaro-coap/interface/coap_interface.h)
 //Uart/Display function to print debug/status messages to
-void hal_uart_puts(char *s) {
-	printf("%s",s);
+void hal_debug_puts(char *s) {
+	printf("%s", s);
 	fflush(stdout);
 }
-void hal_uart_putc(char c){
-	printf("%c",c);
+void hal_debug_putc(char c){
+	printf("%c", c);
 	fflush(stdout);
 }
 
@@ -30,11 +30,11 @@ uint32_t hal_rtc_1Hz_Cnt(void){
 //Non volatile memory e.g. flash/sd-card/eeprom
 //used to store observers during deepsleep of server
 uint8_t* hal_nonVolatile_GetBufPtr(){
-	return NULL; //not implemented yet on esp8266
+	return NULL; //not implemented yet
 }
 
 bool hal_nonVolatile_WriteBuf(uint8_t* data, uint32_t len){
-	return false; //not implemented yet on esp8266
+	return false; //not implemented yet
 }
 
 ////////////////////
@@ -85,7 +85,7 @@ void CoAP_ReceivedPacket(uint8_t fromIfID, char *pdata, unsigned short len) {
 	return;
 }
 
-void CoAP_ReceivedUdp4Packet(uint8_t fromIfID, uint8_t* remoteIp, uint16_t remotePort, char *pdata, unsigned short len) {
+void CoAP_ReceivedUdp4Packet(uint8_t fromIfID, NetAddr_t remoteIp, uint16_t remotePort, char *pdata, unsigned short len) {
 	NetPacket_t		Packet;
 	NetSocket_t* 	pSocket=NULL;
 
@@ -102,14 +102,8 @@ void CoAP_ReceivedUdp4Packet(uint8_t fromIfID, uint8_t* remoteIp, uint16_t remot
 	Packet.pData = pdata;
 	Packet.size = len;
 	
-	NetAddr_t remoteNetAddr;
-	remoteNetAddr.IPv4.u8[0] = remoteIp[0];
-	remoteNetAddr.IPv4.u8[1] = remoteIp[1];
-	remoteNetAddr.IPv4.u8[2] = remoteIp[2];
-	remoteNetAddr.IPv4.u8[3] = remoteIp[3];
-	
     Packet.Sender.NetType = IPV4;
-	Packet.Sender.NetAddr = remoteNetAddr;  // TODO: Copy ip to C managed memory
+	Packet.Sender.NetAddr = remoteIp;
 	Packet.Sender.NetPort = remotePort;
 	 
     Packet.Receiver.NetType = IPV4;

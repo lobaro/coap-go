@@ -12,6 +12,6 @@ extern void Go_SendPacket(uint8_t i, uint8_t* targetIp, uint16_t port, NetPacket
 NetSocket_t* CoAP_CreateInterfaceSocket(uint8_t ifID);
 bool CoAP_SendPacket(uint8_t ifID, NetPacket_t* pckt);
 void CoAP_ReceivedPacket(uint8_t fromIfID, char *pdata, unsigned short len);
-void CoAP_ReceivedUdp4Packet(uint8_t fromIfID, uint8_t* remoteIp, uint16_t remotePort, char *pdata, unsigned short len);
+void CoAP_ReceivedUdp4Packet(uint8_t fromIfID, NetAddr_t remoteIp, uint16_t remotePort, char *pdata, unsigned short len);
 
 #endif
