@@ -1,17 +1,19 @@
 package main
 
 import (
-	"log"
 	"gitlab.com/lobaro/lobaro-coap-go/coap"
+	"log"
 	"net"
 	"time"
 )
 
 func main() {
+	log.Println("Init liblobarocoap")
+
 	log.Println("Creating UDP CoAP socket")
 
 	addr := &net.UDPAddr{
-		IP: net.ParseIP("127.0.0.1"),
+		IP:   net.ParseIP("127.0.0.1"),
 		Port: 5683,
 	}
 	conn, err := net.ListenUDP("udp4", addr)
