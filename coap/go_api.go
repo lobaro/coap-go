@@ -18,12 +18,11 @@ package coap
 */
 import "C"
 import (
-	"unsafe"
 	"log"
 	"net"
 	"time"
+	"unsafe"
 )
-
 
 /**
 typedef struct
@@ -37,7 +36,7 @@ typedef struct
 	NetTransmit_fn Tx; 			//ext. function called by coap stack to send data after finding socket by ifID (internally)
 	bool Alive;
 }NetSocket_t;
- */
+*/
 
 var running = true
 
@@ -86,21 +85,34 @@ func CreateSocket(ifID uint8) NetSocket {
 	return *(*NetSocket)(unsafe.Pointer(socket))
 }
 
-// static void udp_recv_cb(char *pdata, unsigned short len) 
+// static void udp_recv_cb(char *pdata, unsigned short len)
 // TODO: This is the place where we want to pass the endpoint to the stack, no CreateSocket needed anymore
-
 
 func HandleReceivedMessage(ifID uint8, msgBytes []byte) {
 	C.CoAP_ReceivedPacket(C.uint8_t(ifID), (*C.char)(unsafe.Pointer(&msgBytes[0])), C.ushort(len(msgBytes)))
 }
 
-type NetEp_t struct {
-	
+func toIpv4Addr(ip net.IP) C.NetAddr_t {
+	ipAddr := ip.To4()
+	return C.NetAddr_t{ipAddr[0], ipAddr[1], ipAddr[2], ipAddr[3]}
+}
+
+func toIpv6Addr(ip net.IP) C.NetAddr_t {
+	ipAddr := ip.To16()
+	return C.NetAddr_t{
+		ipAddr[0], ipAddr[1], ipAddr[2], ipAddr[3],
+		ipAddr[4], ipAddr[5], ipAddr[6], ipAddr[7],
+		ipAddr[8], ipAddr[9], ipAddr[10], ipAddr[11],
+		ipAddr[12], ipAddr[13], ipAddr[14], ipAddr[15],
+	}
+}
+
+func toUartAddr(comPort byte) C.NetAddr_t {
+	return C.NetAddr_t{comPort}
 }
 
 func HandleReceivedUdp4Message(ifID uint8, addr *net.UDPAddr, msgBytes []byte) {
-	ipAddr := addr.IP.To4()
-	cAdrrBytes := C.NetAddr_t{ipAddr[0], ipAddr[1], ipAddr[2], ipAddr[3]}
+	cAdrrBytes := toIpv4Addr(addr.IP)
 	C.CoAP_ReceivedUdp4Packet(C.uint8_t(ifID), cAdrrBytes, C.uint16_t(addr.Port), (*C.char)(unsafe.Pointer(&msgBytes[0])), C.ushort(len(msgBytes)))
 }
 
@@ -108,7 +120,7 @@ type CoAP_ResOpts_t struct {
 	Cf    uint16 //Content-Format
 	Flags uint16 //Bitwise resource options //todo: Send Response as CON or NON
 	ETag  uint16
-};
+}
 
 // CoAP_Res_t* CoAP_CreateResource(char* Uri, char* Descr,CoAP_ResOpts_t Options, CoAP_ResourceHandler_fPtr_t pHandlerFkt, CoAP_ResourceNotifier_fPtr_t pNotifierFkt );
 // typedef CoAP_HandlerResult_t (*CoAP_ResourceHandler_fPtr_t)(CoAP_Message_t* pReq, CoAP_Message_t* pResp);
@@ -118,10 +130,9 @@ func CreateResource(uri string, description string) {
 
 	//o := CoAP_ResOpts_t{}
 	//opts := *(*C.CoAP_ResOpts_t)(unsafe.Pointer(&o))
-	
+
 	opts := C.CoAP_ResOpts_t{}
 
 	C.CoAP_CreateResource(C.CString(uri), C.CString(description), opts, nil, nil)
 	C.CoAP_PrintAllResources()
 }
-
