@@ -10,19 +10,12 @@ uint32_t go_rtc1HzCnt();
 bool go_Tx(SocketHandle_t socketHandle, NetPacket_t* pPacket);
 void go_debugPuts(char *s);
 void go_debugPutc(char c);
+CoAP_HandlerResult_t go_ResourceHandler(CoAP_Message_t* pReq, CoAP_Message_t* pResp);
 
 //static inline void go_debugPuts(char *s) {
 //	printf("%s", s);
 //	fflush(stdout);
 //}
-
-
-static inline CoAP_API_t CreateApi() {
-	CoAP_API_t api;
-	api.debugPuts = go_debugPuts;
-	api.rtc1HzCnt = go_rtc1HzCnt;
-	return api;
-}
 
 static inline CoAP_Socket_t* CreateSocket(SocketHandle_t handle) {
 	CoAP_Socket_t* pSocket = CoAP_NewSocket(handle);
@@ -76,13 +69,23 @@ var coapMemory = make([]byte, 4096)
 func init() {
 	log.Println("Allocated go memory at", unsafe.Pointer(&coapMemory))
 
-	api := C.CreateApi()
+	api := C.CoAP_API_t{}
+
+	api.debugPuts = (*[0]byte)(unsafe.Pointer(C.go_debugPuts))
+	api.rtc1HzCnt = (*[0]byte)(unsafe.Pointer(C.go_rtc1HzCnt))
 	cfg := C.CoAP_Config_t{}
 
 	cfg.Memory = (*C.uint8_t)(unsafe.Pointer(&coapMemory))
 	cfg.MemorySize = C.int16_t(len(coapMemory))
 
 	C.CoAP_Init(api, cfg)
+
+	go func() {
+		for {
+			DoWork()
+			<-time.After(100 * time.Millisecond)
+		}
+	}()
 }
 
 func NewSocket() Socket {
@@ -122,6 +125,21 @@ func DoWork() {
 	C.CoAP_doWork()
 }
 
+// CoAP_Res_t* CoAP_CreateResource(char* Uri, char* Descr,CoAP_ResOpts_t Options, CoAP_ResourceHandler_fPtr_t pHandlerFkt, CoAP_ResourceNotifier_fPtr_t pNotifierFkt );
+// typedef CoAP_HandlerResult_t (*CoAP_ResourceHandler_fPtr_t)(CoAP_Message_t* pReq, CoAP_Message_t* pResp);
+// typedef CoAP_HandlerResult_t (*CoAP_ResourceNotifier_fPtr_t)(CoAP_Observer_t* pListObservers, CoAP_Message_t* pResp);
+func CreateResource(uri string, description string) {
+	// TODO: C.free the CString - needs stdlib.h
+
+	//o := CoAP_ResOpts_t{}
+	//opts := *(*C.CoAP_ResOpts_t)(unsafe.Pointer(&o))
+
+	opts := C.CoAP_ResOpts_t{}
+
+	C.CoAP_CreateResource(C.CString(uri), C.CString(description), opts, nil, nil)
+	//C.CoAP_PrintAllResources()
+}
+
 //export go_rtc1HzCnt
 func go_rtc1HzCnt() C.uint32_t {
 	return C.uint32_t(time.Now().Unix())
@@ -145,6 +163,16 @@ func go_Tx(socketHandle C.SocketHandle_t, pPacket *C.NetPacket_t) C.bool {
 //export go_debugPuts
 func go_debugPuts(s *C.char) {
 	fmt.Print(C.GoString(s))
+}
+
+// typedef CoAP_HandlerResult_t (* CoAP_ResourceHandler_fPtr_t)(CoAP_Message_t* pReq, CoAP_Message_t* pResp)
+//export go_ResourceHandler
+func go_ResourceHandler(pReq *C.CoAP_Message_t, pResp *C.CoAP_Message_t) C.CoAP_HandlerResult_t {
+	logrus.Info("The handler got called!")
+	// C.HANDLER_OK
+	// C.HANDLER_POSTPONE
+	// C.HANDLER_ERROR
+	return C.HANDLER_OK
 }
 
 func createIpv4Ep(ip net.IP, port int) C.NetEp_t {
