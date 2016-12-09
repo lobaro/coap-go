@@ -1,5 +1,6 @@
 package coapmsg
 
+// https://github.com/dustin/go-coap
 import (
 	"bytes"
 	"encoding/binary"
@@ -7,7 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
-	"strings" 
+	"strings"
 )
 
 // COAPType represents the message type.
@@ -17,11 +18,11 @@ const (
 	// Confirmable messages require acknowledgements.
 	Confirmable COAPType = 0
 	// NonConfirmable messages do not require acknowledgements.
-	NonConfirmable = 1
+	NonConfirmable COAPType = 1
 	// Acknowledgement is a message indicating a response to confirmable message.
-	Acknowledgement = 2
+	Acknowledgement COAPType = 2
 	// Reset indicates a permanent negative acknowledgement.
-	Reset = 3
+	Reset COAPType = 3
 )
 
 var typeNames = [256]string{
@@ -48,35 +49,35 @@ type COAPCode uint8
 
 // Request Codes
 const (
-	GET    COAPCode = 1
-	POST            = 2
-	PUT             = 3
-	DELETE          = 4
+	GET    COAPCode = 1 // 0.01
+	POST   COAPCode = 2 // 0.02
+	PUT    COAPCode = 3 // 0.03
+	DELETE COAPCode = 4 // 0.04
 )
 
 // Response Codes
 const (
-	Created               COAPCode = 65
-	Deleted                        = 66
-	Valid                          = 67
-	Changed                        = 68
-	Content                        = 69
-	BadRequest                     = 128
-	Unauthorized                   = 129
-	BadOption                      = 130
-	Forbidden                      = 131
-	NotFound                       = 132
-	MethodNotAllowed               = 133
-	NotAcceptable                  = 134
-	PreconditionFailed             = 140
-	RequestEntityTooLarge          = 141
-	UnsupportedMediaType           = 143
-	InternalServerError            = 160
-	NotImplemented                 = 161
-	BadGateway                     = 162
-	ServiceUnavailable             = 163
-	GatewayTimeout                 = 164
-	ProxyingNotSupported           = 165
+	Created               COAPCode = 65  // 2.01
+	Deleted               COAPCode = 66  // 2.02
+	Valid                 COAPCode = 67  // 2.03
+	Changed               COAPCode = 68  // 2.04
+	Content               COAPCode = 69  // 2.05
+	BadRequest            COAPCode = 128 // 4.00
+	Unauthorized          COAPCode = 129 // 4.01
+	BadOption             COAPCode = 130 // 4.02
+	Forbidden             COAPCode = 131 // 4.03
+	NotFound              COAPCode = 132 // 4.04
+	MethodNotAllowed      COAPCode = 133 // 4.05
+	NotAcceptable         COAPCode = 134 // 4.06
+	PreconditionFailed    COAPCode = 140 // 4.12
+	RequestEntityTooLarge COAPCode = 141 // 4.13
+	UnsupportedMediaType  COAPCode = 143 // 4.15
+	InternalServerError   COAPCode = 160 // 5.00
+	NotImplemented        COAPCode = 161 // 5.01
+	BadGateway            COAPCode = 162 // 5.02
+	ServiceUnavailable    COAPCode = 163 // 5.03
+	GatewayTimeout        COAPCode = 164 // 5.04
+	ProxyingNotSupported  COAPCode = 165 // 5.05
 )
 
 var codeNames = [256]string{
@@ -119,6 +120,20 @@ func (c COAPCode) String() string {
 	return codeNames[c]
 }
 
+// First 3 bits of the code [0, 7]
+func (c COAPCode) Class() uint8 {
+	return uint8(c) >> 5
+}
+
+// Last 5 bits of the code [0, 31]
+func (c COAPCode) Detail() uint8 {
+	return uint8(c) & (0xFF >> 3)
+}
+
+func BuildCode(class, detail uint8) COAPCode {
+	return COAPCode((class << 5) | detail)
+}
+
 // Message encoding errors.
 var (
 	ErrInvalidTokenLen   = errors.New("invalid token length")
@@ -127,7 +142,7 @@ var (
 )
 
 // OptionID identifies an option in a message.
-type OptionID uint8
+type OptionID uint16
 
 /*
    +-----+----+---+---+---+----------------+--------+--------+---------+
@@ -156,22 +171,58 @@ type OptionID uint8
 // Option IDs.
 const (
 	IfMatch       OptionID = 1
-	URIHost                = 3
-	ETag                   = 4
-	IfNoneMatch            = 5
-	Observe                = 6
-	URIPort                = 7
-	LocationPath           = 8
-	URIPath                = 11
-	ContentFormat          = 12
-	MaxAge                 = 14
-	URIQuery               = 15
-	Accept                 = 17
-	LocationQuery          = 20
-	ProxyURI               = 35
-	ProxyScheme            = 39
-	Size1                  = 60
+	URIHost       OptionID = 3
+	ETag          OptionID = 4
+	IfNoneMatch   OptionID = 5
+	Observe       OptionID = 6
+	URIPort       OptionID = 7
+	LocationPath  OptionID = 8
+	URIPath       OptionID = 11
+	ContentFormat OptionID = 12
+	MaxAge        OptionID = 14
+	URIQuery      OptionID = 15
+	Accept        OptionID = 17
+	LocationQuery OptionID = 20
+	ProxyURI      OptionID = 35
+	ProxyScheme   OptionID = 39
+	Size1         OptionID = 60
 )
+
+// Option value format (RFC7252 section 3.2)
+type valueFormat uint8
+
+const (
+	valueUnknown valueFormat = iota
+	valueEmpty
+	valueOpaque
+	valueUint
+	valueString
+)
+
+type optionDef struct {
+	valueFormat valueFormat
+	minLen      int
+	maxLen      int
+}
+
+var optionDefs = [256]optionDef{
+	IfMatch:       {valueFormat: valueOpaque, minLen: 0, maxLen: 8},
+	URIHost:       {valueFormat: valueString, minLen: 1, maxLen: 255},
+	ETag:          {valueFormat: valueOpaque, minLen: 1, maxLen: 8},
+	IfNoneMatch:   {valueFormat: valueEmpty, minLen: 0, maxLen: 0},
+	Observe:       {valueFormat: valueUint, minLen: 0, maxLen: 3},
+	URIPort:       {valueFormat: valueUint, minLen: 0, maxLen: 2},
+	LocationPath:  {valueFormat: valueString, minLen: 0, maxLen: 255},
+	URIPath:       {valueFormat: valueString, minLen: 0, maxLen: 255},
+	ContentFormat: {valueFormat: valueUint, minLen: 0, maxLen: 2},
+	MaxAge:        {valueFormat: valueUint, minLen: 0, maxLen: 4},
+	URIQuery:      {valueFormat: valueString, minLen: 0, maxLen: 255},
+	Accept:        {valueFormat: valueUint, minLen: 0, maxLen: 2},
+	LocationQuery: {valueFormat: valueString, minLen: 0, maxLen: 255},
+	ProxyURI:      {valueFormat: valueString, minLen: 1, maxLen: 1034},
+	ProxyScheme:   {valueFormat: valueString, minLen: 1, maxLen: 255},
+	Size1:         {valueFormat: valueUint, minLen: 0, maxLen: 4},
+}
 
 // MediaType specifies the content type of a message.
 type MediaType byte
@@ -179,11 +230,11 @@ type MediaType byte
 // Content types.
 const (
 	TextPlain     MediaType = 0  // text/plain;charset=utf-8
-	AppLinkFormat           = 40 // application/link-format
-	AppXML                  = 41 // application/xml
-	AppOctets               = 42 // application/octet-stream
-	AppExi                  = 47 // application/exi
-	AppJSON                 = 50 // application/json
+	AppLinkFormat MediaType = 40 // application/link-format
+	AppXML        MediaType = 41 // application/xml
+	AppOctets     MediaType = 42 // application/octet-stream
+	AppExi        MediaType = 47 // application/exi
+	AppJSON       MediaType = 50 // application/json
 )
 
 type option struct {
@@ -218,7 +269,7 @@ func decodeInt(b []byte) uint32 {
 	return binary.BigEndian.Uint32(tmp)
 }
 
-func (o option) toBytes() []byte {
+func (o option) ToBytes() []byte {
 	var v uint32
 
 	switch i := o.Value.(type) {
@@ -244,25 +295,52 @@ func (o option) toBytes() []byte {
 	return encodeInt(v)
 }
 
-type options []option
+func parseOptionValue(optionID OptionID, valueBuf []byte) interface{} {
+	def := optionDefs[optionID]
+	if def.valueFormat == valueUnknown {
+		// Skip unrecognized options (RFC7252 section 5.4.1)
+		return nil
+	}
+	if len(valueBuf) < def.minLen || len(valueBuf) > def.maxLen {
+		// Skip options with illegal value length (RFC7252 section 5.4.3)
+		return nil
+	}
+	switch def.valueFormat {
+	case valueUint:
+		intValue := decodeInt(valueBuf)
+		if optionID == ContentFormat || optionID == Accept {
+			return MediaType(intValue)
+		} else {
+			return intValue
+		}
+	case valueString:
+		return string(valueBuf)
+	case valueOpaque, valueEmpty:
+		return valueBuf
+	}
+	// Skip unrecognized options (should never be reached)
+	return nil
+}
 
-func (o options) Len() int {
+type Options []option
+
+func (o Options) Len() int {
 	return len(o)
 }
 
-func (o options) Less(i, j int) bool {
+func (o Options) Less(i, j int) bool {
 	if o[i].ID == o[j].ID {
 		return i < j
 	}
 	return o[i].ID < o[j].ID
 }
 
-func (o options) Swap(i, j int) {
+func (o Options) Swap(i, j int) {
 	o[i], o[j] = o[j], o[i]
 }
 
-func (o options) Minus(oid OptionID) options {
-	rv := options{}
+func (o Options) Minus(oid OptionID) Options {
+	rv := Options{}
 	for _, opt := range o {
 		if opt.ID != oid {
 			rv = append(rv, opt)
@@ -279,7 +357,7 @@ type Message struct {
 
 	Token, Payload []byte
 
-	opts options
+	opts Options
 }
 
 // IsConfirmable returns true if this message is confirmable.
@@ -300,6 +378,10 @@ func (m Message) Options(o OptionID) []interface{} {
 	return rv
 }
 
+func (m Message) OptionsRaw() Options {
+	return m.opts
+}
+
 // Option gets the first value for the given option ID.
 func (m Message) Option(o OptionID) interface{} {
 	for _, v := range m.opts {
@@ -310,9 +392,9 @@ func (m Message) Option(o OptionID) interface{} {
 	return nil
 }
 
-func (m Message) optionStrings(o OptionID) []string {
+func (m Message) optionStrings(id OptionID) []string {
 	var rv []string
-	for _, o := range m.Options(o) {
+	for _, o := range m.Options(id) {
 		rv = append(rv, o.(string))
 	}
 	return rv
@@ -336,17 +418,18 @@ func (m *Message) SetPathString(s string) {
 	m.SetPath(strings.Split(s, "/"))
 }
 
-// SetPath updates or adds a LocationPath attribute on this message.
+// SetPath updates or adds a URIPath attribute on this message.
 func (m *Message) SetPath(s []string) {
-	m.RemoveOption(URIPath)
-	for _, p := range s {
-		m.AddOption(URIPath, p)
-	}
+	m.SetOption(URIPath, s)
 }
 
 // RemoveOption removes all references to an option
 func (m *Message) RemoveOption(opID OptionID) {
 	m.opts = m.opts.Minus(opID)
+}
+
+func (m *Message) AddOptionFromBytes(opID OptionID, val []byte) {
+	m.AddOption(opID, parseOptionValue(opID, val))
 }
 
 // AddOption adds an option.
@@ -362,11 +445,23 @@ func (m *Message) AddOption(opID OptionID, val interface{}) {
 	m.opts = append(m.opts, option{opID, val})
 }
 
+func (m *Message) SetOptionFromBytes(opID OptionID, val []byte) {
+	m.SetOption(opID, parseOptionValue(opID, val))
+}
+
 // SetOption sets an option, discarding any previous value
 func (m *Message) SetOption(opID OptionID, val interface{}) {
 	m.RemoveOption(opID)
 	m.AddOption(opID, val)
 }
+
+const (
+	extoptByteCode   = 13
+	extoptByteAddend = 13
+	extoptWordCode   = 14
+	extoptWordAddend = 269
+	extoptError      = 15
+)
 
 // MarshalBinary produces the binary form of this Message.
 func (m *Message) MarshalBinary() ([]byte, error) {
@@ -397,36 +492,73 @@ func (m *Message) MarshalBinary() ([]byte, error) {
 
 	/*
 	     0   1   2   3   4   5   6   7
-	   +---+---+---+---+---+---+---+---+
-	   | Option Delta  |    Length     | for 0..14
-	   +---+---+---+---+---+---+---+---+
-	   |   Option Value ...
-	   +---+---+---+---+---+---+---+---+
-	                                               for 15..270:
-	   +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-	   | Option Delta  | 1   1   1   1 |          Length - 15          |
-	   +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-	   |   Option Value ...
-	   +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+	   +---------------+---------------+
+	   |               |               |
+	   |  Option Delta | Option Length |   1 byte
+	   |               |               |
+	   +---------------+---------------+
+	   \                               \
+	   /         Option Delta          /   0-2 bytes
+	   \          (extended)           \
+	   +-------------------------------+
+	   \                               \
+	   /         Option Length         /   0-2 bytes
+	   \          (extended)           \
+	   +-------------------------------+
+	   \                               \
+	   /                               /
+	   \                               \
+	   /         Option Value          /   0 or more bytes
+	   \                               \
+	   /                               /
+	   \                               \
+	   +-------------------------------+
+	   See parseExtOption(), extendOption()
+	   and writeOptionHeader() below for implementation details
 	*/
 
-	sort.Sort(&m.opts)
+	extendOpt := func(opt int) (int, int) {
+		ext := 0
+		if opt >= extoptByteAddend {
+			if opt >= extoptWordAddend {
+				ext = opt - extoptWordAddend
+				opt = extoptWordCode
+			} else {
+				ext = opt - extoptByteAddend
+				opt = extoptByteCode
+			}
+		}
+		return opt, ext
+	}
+
+	writeOptHeader := func(delta, length int) {
+		d, dx := extendOpt(delta)
+		l, lx := extendOpt(length)
+
+		buf.WriteByte(byte(d<<4) | byte(l))
+
+		tmp := []byte{0, 0}
+		writeExt := func(opt, ext int) {
+			switch opt {
+			case extoptByteCode:
+				buf.WriteByte(byte(ext))
+			case extoptWordCode:
+				binary.BigEndian.PutUint16(tmp, uint16(ext))
+				buf.Write(tmp)
+			}
+		}
+
+		writeExt(d, dx)
+		writeExt(l, lx)
+	}
+
+	sort.Stable(&m.opts)
 
 	prev := 0
-	for _, o := range m.opts {
-		b := o.toBytes()
-		if len(b) >= 15 {
-			buf.Write([]byte{
-				byte(int(o.ID)-prev)<<4 | 15,
-				byte(len(b) - 15),
-			})
-		} else {
-			buf.Write([]byte{byte(int(o.ID)-prev)<<4 | byte(len(b))})
-		}
-		if int(o.ID)-prev > 15 {
-			return nil, ErrOptionGapTooLarge
-		}
 
+	for _, o := range m.opts {
+		b := o.ToBytes()
+		writeOptHeader(int(o.ID)-prev, len(b))
 		buf.Write(b)
 		prev = int(o.ID)
 	}
@@ -467,43 +599,67 @@ func (m *Message) UnmarshalBinary(data []byte) error {
 	if tokenLen > 0 {
 		m.Token = make([]byte, tokenLen)
 	}
+	if len(data) < 4+tokenLen {
+		return errors.New("truncated")
+	}
 	copy(m.Token, data[4:4+tokenLen])
 	b := data[4+tokenLen:]
 	prev := 0
+
+	parseExtOpt := func(opt int) (int, error) {
+		switch opt {
+		case extoptByteCode:
+			if len(b) < 1 {
+				return -1, errors.New("truncated")
+			}
+			opt = int(b[0]) + extoptByteAddend
+			b = b[1:]
+		case extoptWordCode:
+			if len(b) < 2 {
+				return -1, errors.New("truncated")
+			}
+			opt = int(binary.BigEndian.Uint16(b[:2])) + extoptWordAddend
+			b = b[2:]
+		}
+		return opt, nil
+	}
+
 	for len(b) > 0 {
 		if b[0] == 0xff {
 			b = b[1:]
 			break
 		}
-		oid := OptionID(prev + int(b[0]>>4))
-		l := int(b[0] & 0xf)
-		b = b[1:]
-		if l > 14 {
-			l += int(b[0])
-			b = b[1:]
+
+		delta := int(b[0] >> 4)
+		length := int(b[0] & 0x0f)
+
+		if delta == extoptError || length == extoptError {
+			return errors.New("unexpected extended option marker")
 		}
-		if len(b) < l {
+
+		b = b[1:]
+
+		delta, err := parseExtOpt(delta)
+		if err != nil {
+			return err
+		}
+		length, err = parseExtOpt(length)
+		if err != nil {
+			return err
+		}
+
+		if len(b) < length {
 			return errors.New("truncated")
 		}
-		var opval interface{} = b[:l]
-		switch oid {
-		case URIPort, ContentFormat, MaxAge, Accept, Size1:
-			opval = decodeInt(b[:l])
-		case URIHost, LocationPath, URIPath, URIQuery, LocationQuery,
-			ProxyURI, ProxyScheme:
-			opval = string(b[:l])
+
+		oid := OptionID(prev + delta)
+		if opval := parseOptionValue(oid, b[:length]); opval != nil {
+			m.opts = append(m.opts, option{ID: oid, Value: opval})
 		}
 
-		option := option{
-			ID:    oid,
-			Value: opval,
-		}
-		b = b[l:]
-		prev = int(option.ID)
-
-		m.opts = append(m.opts, option)
+		b = b[length:]
+		prev = int(oid)
 	}
-
 	m.Payload = b
 	return nil
 }

@@ -3,6 +3,7 @@ package liblobarocoap
 /*
 #cgo LDFLAGS: "-LC:/dev/cpath/github.com/Lobaro/lobaro-coap" -L${SRCDIR} -llobaro_coap
 #include "liblobaro_coap.h"
+#include "coap_options.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -26,7 +27,9 @@ static inline CoAP_Socket_t* CreateSocket(SocketHandle_t handle) {
 */
 import "C"
 import (
+	"encoding/binary"
 	"fmt"
+	"github.com/Lobaro/coap-go/coapmsg"
 	"github.com/Sirupsen/logrus"
 	"log"
 	"net"
@@ -35,6 +38,21 @@ import (
 )
 
 var currentHandle uintptr = 0
+
+var resources = make(map[string]*Resource)
+
+type HandlerResult byte
+
+const (
+	OK       = HandlerResult(0)
+	POSTPONE = HandlerResult(1)
+	ERROR    = HandlerResult(2)
+)
+
+type Resource struct {
+	ref     unsafe.Pointer // type *C.struct_CoAP_Res
+	Handler func(req coapmsg.Message, res *coapmsg.Message) HandlerResult
+}
 
 type Socket struct {
 	Handle uintptr
@@ -128,16 +146,29 @@ func DoWork() {
 // CoAP_Res_t* CoAP_CreateResource(char* Uri, char* Descr,CoAP_ResOpts_t Options, CoAP_ResourceHandler_fPtr_t pHandlerFkt, CoAP_ResourceNotifier_fPtr_t pNotifierFkt );
 // typedef CoAP_HandlerResult_t (*CoAP_ResourceHandler_fPtr_t)(CoAP_Message_t* pReq, CoAP_Message_t* pResp);
 // typedef CoAP_HandlerResult_t (*CoAP_ResourceNotifier_fPtr_t)(CoAP_Observer_t* pListObservers, CoAP_Message_t* pResp);
-func CreateResource(uri string, description string) {
-	// TODO: C.free the CString - needs stdlib.h
-
-	//o := CoAP_ResOpts_t{}
-	//opts := *(*C.CoAP_ResOpts_t)(unsafe.Pointer(&o))
-
+func CreateResource(uri string, description string, allowedMethods ...coapmsg.COAPCode) *Resource {
 	opts := C.CoAP_ResOpts_t{}
 
-	C.CoAP_CreateResource(C.CString(uri), C.CString(description), opts, nil, nil)
-	//C.CoAP_PrintAllResources()
+	for _, m := range allowedMethods {
+		opts.AllowedMethods |= 1 << m.Detail()
+	}
+	resourceHandler := (*[0]byte)(unsafe.Pointer(C.go_ResourceHandler))
+	res := C.CoAP_CreateResource(C.CString(uri), C.CString(description), opts, resourceHandler, nil)
+
+	if res == nil {
+		return nil
+	}
+
+	msg := coapmsg.Message{}
+	msg.SetPathString(uri)
+
+	resource := &Resource{
+		ref: unsafe.Pointer(res),
+	}
+
+	resources[msg.PathString()] = resource
+
+	return resource
 }
 
 //export go_rtc1HzCnt
@@ -165,14 +196,72 @@ func go_debugPuts(s *C.char) {
 	fmt.Print(C.GoString(s))
 }
 
+func toGoMessage(cMsg *C.CoAP_Message_t) coapmsg.Message {
+	msg := coapmsg.Message{}
+	msg.Payload = C.GoBytes(unsafe.Pointer(cMsg.Payload), C.int(cMsg.PayloadLength))
+	msg.Type = coapmsg.COAPType(cMsg.Type)
+	msg.Code = coapmsg.COAPCode(cMsg.Code)
+	msg.MessageID = uint16(cMsg.MessageID)
+	msg.Token = make([]byte, 8)
+	binary.LittleEndian.PutUint64(msg.Token, uint64(cMsg.Token64))
+
+	for opt := cMsg.pOptionsList; opt != nil; opt = opt.next {
+		msg.AddOptionFromBytes(coapmsg.OptionID(opt.Number), C.GoBytes(unsafe.Pointer(opt.Value), C.int(opt.Length)))
+	}
+	return msg
+}
+
+func toCMessage(goMsg coapmsg.Message, cMsg *C.CoAP_Message_t) {
+	payload := C.CBytes(goMsg.Payload)
+	cMsg.Payload = (*C.uint8_t)(payload)
+	// TODO: When can we actually free?
+	go func() {
+		select {
+		case <-time.After(5 * time.Second):
+			C.free(payload)
+		}
+	}()
+	cMsg.PayloadLength = C.uint16_t(len(goMsg.Payload))
+	cMsg.Type = C.CoAP_MessageType_t(goMsg.Type)
+	cMsg.Code = C.CoAP_MessageCode_t(goMsg.Code)
+	cMsg.MessageID = C.uint16_t(goMsg.MessageID)
+	cMsg.Token64 = C.uint64_t(binary.LittleEndian.Uint64(goMsg.Token))
+
+	for _, opt := range goMsg.OptionsRaw() {
+		optBytes := opt.ToBytes()
+		cOptBytes := C.CBytes(optBytes)
+		C.CoAP_AppendOptionToList((**C.CoAP_option_t)(&cMsg.pOptionsList), C.uint16_t(opt.ID), (*C.uint8_t)(cOptBytes), C.uint16_t(len(optBytes)))
+		C.free(cOptBytes)
+	}
+}
+
 // typedef CoAP_HandlerResult_t (* CoAP_ResourceHandler_fPtr_t)(CoAP_Message_t* pReq, CoAP_Message_t* pResp)
 //export go_ResourceHandler
 func go_ResourceHandler(pReq *C.CoAP_Message_t, pResp *C.CoAP_Message_t) C.CoAP_HandlerResult_t {
 	logrus.Info("The handler got called!")
-	// C.HANDLER_OK
-	// C.HANDLER_POSTPONE
-	// C.HANDLER_ERROR
-	return C.HANDLER_OK
+
+	req := toGoMessage(pReq)
+	res := toGoMessage(pResp)
+
+	resource := resources[req.PathString()]
+	if resource.Handler != nil {
+		result := resource.Handler(req, &res)
+		logrus.Info("Prepare response!")
+
+		logrus.WithField("pResp", pResp.Code).Info("pResp")
+		toCMessage(res, pResp)
+
+		switch result {
+		case OK:
+			return C.HANDLER_OK
+		case POSTPONE:
+			return C.HANDLER_POSTPONE
+		case ERROR:
+			return C.HANDLER_ERROR
+		}
+	}
+	logrus.WithField("ReqPath", req.PathString()).Error("Missing Handler")
+	return C.HANDLER_ERROR
 }
 
 func createIpv4Ep(ip net.IP, port int) C.NetEp_t {
