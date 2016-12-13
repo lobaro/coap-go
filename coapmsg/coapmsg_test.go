@@ -72,6 +72,27 @@ func TestCode(t *testing.T) {
 	}
 }
 
+func TestSetOptions(t *testing.T) {
+	msg := Message{}
+
+	opts := CoapOptions{}
+	opts.Set(ContentFormat, AppJSON)
+	opts.Add(ContentFormat, AppXML)
+
+	msg.SetOptions(opts)
+
+	if len(msg.OptionsRaw()) != 2 {
+		t.Error("Expected 1 option but got", len(msg.OptionsRaw()))
+	} else {
+		if msg.OptionsRaw()[0].Value != AppJSON {
+			t.Error("Expected option value", AppJSON, "but got", msg.OptionsRaw()[0].Value)
+		}
+		if msg.OptionsRaw()[1].Value != AppXML {
+			t.Error("Expected option value", AppXML, "but got", msg.OptionsRaw()[1].Value)
+		}
+	}
+}
+
 func TestMediaTypes(t *testing.T) {
 	types := []interface{}{TextPlain, AppLinkFormat, AppXML, AppOctets, AppExi, AppJSON}
 	exp := "coapmsg.MediaType"
@@ -138,8 +159,6 @@ func TestOptionToBytesPanic(t *testing.T) {
 		err := recover()
 		if err == nil {
 			t.Error("Expected panic. Didn't")
-		} else {
-			t.Logf("Got expected error: %v", err)
 		}
 	}()
 	option{Value: 3.1415926535897}.ToBytes()
@@ -162,7 +181,7 @@ func TestTypeString(t *testing.T) {
 
 func TestCodeString(t *testing.T) {
 	tests := map[COAPCode]string{
-		0:             "Unknown (0x0)",
+		0:             "Empty",
 		GET:           "GET",
 		POST:          "POST",
 		NotAcceptable: "NotAcceptable",
@@ -171,8 +190,7 @@ func TestCodeString(t *testing.T) {
 
 	for code, exp := range tests {
 		if code.String() != exp {
-			t.Errorf("Error on %d, got %v, expected %v",
-				code, code, exp)
+			t.Errorf("Error on %d, got %v, expected %v", code, code, exp)
 		}
 	}
 }
