@@ -6,6 +6,16 @@ The **GoLang adapter** uses cgo to provide a CoAP stack based on the code of Lob
 
 ## Getting Started
 
+The project consists of multiple submodules:
+
+* **coap** - A pure Go client library with an API similar to Go's http package. Supports multiple Transports (e.g. RS232).
+* **liblobarocoap** - A CGO wrapper around [Lobaro CoAP](https://github.com/lobaro/lobaro-coap) C Implementation.
+* **coapmsg** The underlying CoAP message structure used by other packages. Based on [dustin/go-coap](https://github.com/dustin/go-coap).
+
+It is planned to extend the `coap` package to support more transports like UDP, TCP in future. The package will also get some code to setup CoAP servers. First based on `liblobarocoap` and later also in native Go.
+
+Contributions are welcome!
+
 ### Prerequisite 
 To build the project you need a C compiler and the matching [Go](https://golang.org/dl/) toolkit installed. 
 
@@ -26,5 +36,5 @@ go test github.com/lobaro/lobaro-coap
 
 To use the library in your project, just import
 ```
-import "gitlab.com/lobaro/lobaro-coap-go/coap"
+import "github.com/lobaro/lobaro-coap/coap"
 ```
