@@ -76,7 +76,9 @@ type Client struct {
 }
 
 // DefaultClient is the default Client and is used by Get, Head, and Post.
-var DefaultClient = &Client{}
+var DefaultClient = &Client{
+	Transport: DefaultTransport,
+}
 
 func (c *Client) Do(req *Request) (*Response, error) {
 	return c.send(req, c.deadline())
@@ -192,7 +194,9 @@ func send(ireq *Request, rt RoundTripper, deadline time.Time) (*Response, error)
 	return resp, nil
 }
 
-func alwaysFalse() bool { return false }
+func alwaysFalse() bool {
+	return false
+}
 
 // setRequestCancel sets the Cancel field of req, if deadline is
 // non-zero. The RoundTripper's type is used to determine whether the legacy
@@ -222,7 +226,11 @@ func setRequestCancel(req *Request, rt RoundTripper, deadline time.Time) (stopTi
 
 	stopTimerCh := make(chan struct{})
 	var once sync.Once
-	stopTimer = func() { once.Do(func() { close(stopTimerCh) }) }
+	stopTimer = func() {
+		once.Do(func() {
+			close(stopTimerCh)
+		})
+	}
 
 	timer := time.NewTimer(deadline.Sub(time.Now()))
 	go func() {

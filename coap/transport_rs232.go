@@ -1,37 +1,81 @@
-package rs232
+package coap
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/Lobaro/coap-go/coap"
 	"github.com/Lobaro/coap-go/coapmsg"
 	"github.com/Lobaro/slip"
 	"github.com/tarm/serial"
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 )
 
-type Transport struct {
+type StopBits byte
+type Parity byte
+
+const (
+	Stop1     StopBits = 1
+	Stop1Half StopBits = 15
+	Stop2     StopBits = 2
+)
+
+const (
+	ParityNone  Parity = 'N'
+	ParityOdd   Parity = 'O'
+	ParityEven  Parity = 'E'
+	ParityMark  Parity = 'M' // parity bit is always 1
+	ParitySpace Parity = 'S' // parity bit is always 0
+)
+
+// Transport uses a Serial port to communicate via RS232
+// All Serial parameters can be set on the transport
+// The host of the request URL specifies the serial connection, e.g. COM3
+// The URI scheme must be coap+rs232 and valid URIs would be
+// coap+rs232://COM3/sensors/temperature
+// coap+rs232://ttyS2/sensors/temperature
+// Since we can not have a slash (/) in the host name, on linux systems
+// the /dev/ part of the device file handle is added implicitly
+// https://tools.ietf.org/html/rfc3986#page-21 allows system specific Host lookups
+type TransportRs232 struct {
 	mu        *sync.Mutex
 	lastMsgId uint16     // Sequence counter
 	rand      *rand.Rand // Random source for token generation
 	// TODO: add parameter for serial connection like Baud rate.
+
+	Name        string
+	Baud        int
+	ReadTimeout time.Duration // Total timeout
+
+	// Size is the number of data bits. If 0, DefaultSize is used.
+	Size byte
+
+	// Parity is the bit to use and defaults to ParityNone (no parity bit).
+	Parity Parity
+
+	// Number of stop bits to use. Default is 1 (1 stop bit).
+	StopBits StopBits
 }
 
-func NewTransport() *Transport {
-	return &Transport{
-		mu:   &sync.Mutex{},
-		rand: rand.New(rand.NewSource(time.Now().UnixNano())),
+func NewTransportRs232() *TransportRs232 {
+	return &TransportRs232{
+		mu:          &sync.Mutex{},
+		rand:        rand.New(rand.NewSource(time.Now().UnixNano())),
+		Baud:        115200,
+		Parity:      ParityNone,
+		Size:        0,
+		ReadTimeout: time.Millisecond * 500,
+		StopBits:    Stop1,
 	}
 
 }
 
-func (t *Transport) RoundTrip(req *coap.Request) (res *coap.Response, err error) {
+func (t *TransportRs232) RoundTrip(req *Request) (res *Response, err error) {
 
 	if req == nil {
 		return nil, errors.New("coap: Got nil request")
@@ -52,16 +96,20 @@ func (t *Transport) RoundTrip(req *coap.Request) (res *coap.Response, err error)
 	// Open the connection and write the request
 	//###########################################
 
-	serialCfg := newSerialConfig()
+	serialCfg := t.newSerialConfig()
 
 	if req.URL == nil {
 		return nil, errors.New(fmt.Sprint("coap: Missing request URL"))
 	}
-	if req.URL.Scheme != "coap" {
-		return nil, errors.New(fmt.Sprint("coap: Invalid URL scheme: ", req.URL.Scheme))
+	if req.URL.Scheme != "coap+rs232" {
+		return nil, errors.New(fmt.Sprint("coap: Invalid URL scheme, expected coap+rs232 but got: ", req.URL.Scheme))
 	}
 
-	serialCfg.Name = req.URL.Host
+	if runtime.GOOS != "windows" {
+		serialCfg.Name = "/dev/" + req.URL.Host
+	} else {
+		serialCfg.Name = req.URL.Host
+	}
 
 	conn, err := openComPort(serialCfg)
 	defer conn.Close()
@@ -152,7 +200,7 @@ func (t *Transport) RoundTrip(req *coap.Request) (res *coap.Response, err error)
 		return nil, errors.New("coap: Received empty ACK. Delayed responses not supported yet!")
 	}
 
-	res = &coap.Response{
+	res = &Response{
 		StatusCode: int(resMsg.Code),
 		Status:     fmt.Sprintf("%d.%d %s", resMsg.Code.Class(), resMsg.Code.Detail(), resMsg.Code.String()),
 		Body:       ioutil.NopCloser(bytes.NewReader(resMsg.Payload)),
@@ -174,22 +222,22 @@ func bytesAreEqual(a, b []byte) bool {
 	return true
 }
 
-func newSerialConfig() *serial.Config {
+func (t *TransportRs232) newSerialConfig() *serial.Config {
 	return &serial.Config{
 		Name:        "",
-		Baud:        115200,
-		Parity:      serial.ParityNone,
-		Size:        0,
-		ReadTimeout: time.Millisecond * 500,
-		StopBits:    serial.Stop1,
+		Baud:        t.Baud,
+		Parity:      serial.Parity(t.Parity),
+		Size:        t.Size,
+		ReadTimeout: t.ReadTimeout,
+		StopBits:    serial.StopBits(t.StopBits),
 	}
 }
 
 // BuildMessage creates a coap message based on the request
 // Takes care of closing the request body
-func (t *Transport) buildMessage(req *coap.Request) (*coapmsg.Message, error) {
+func (t *TransportRs232) buildMessage(req *Request) (*coapmsg.Message, error) {
 	defer req.Body.Close()
-	if !coap.ValidMethod(req.Method) {
+	if !ValidMethod(req.Method) {
 		return nil, errors.New(fmt.Sprint("coap: Invalid method: ", req.Method))
 	}
 
@@ -226,7 +274,7 @@ func (t *Transport) buildMessage(req *coap.Request) (*coapmsg.Message, error) {
 	return msg, nil
 }
 
-func (t *Transport) nextMessageId() uint16 {
+func (t *TransportRs232) nextMessageId() uint16 {
 	t.mu.Lock()
 	t.lastMsgId++
 	msgId := t.lastMsgId
@@ -234,7 +282,7 @@ func (t *Transport) nextMessageId() uint16 {
 	return msgId
 }
 
-func (t *Transport) nextToken() []byte {
+func (t *TransportRs232) nextToken() []byte {
 	tok := make([]byte, 4)
 	t.rand.Read(tok)
 	return tok
