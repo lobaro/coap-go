@@ -80,6 +80,14 @@ var DefaultClient = &Client{
 	Transport: DefaultTransport,
 }
 
+func Get(url string) (*Response, error) {
+	return DefaultClient.Get(url)
+}
+
+func Post(url string, bodyType uint16, body io.Reader) (*Response, error) {
+	return DefaultClient.Post(url, bodyType, body)
+}
+
 func (c *Client) Do(req *Request) (*Response, error) {
 	return c.send(req, c.deadline())
 }
@@ -91,7 +99,7 @@ func (c *Client) Do(req *Request) (*Response, error) {
 //
 // To make a request with custom options, use NewRequest and
 // DefaultClient.Do.
-func (c *Client) Get(url string) (resp *Response, err error) {
+func (c *Client) Get(url string) (*Response, error) {
 	req, err := NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err

@@ -42,6 +42,8 @@ const (
 // Since we can not have a slash (/) in the host name, on linux systems
 // the /dev/ part of the device file handle is added implicitly
 // https://tools.ietf.org/html/rfc3986#page-21 allows system specific Host lookups
+//
+// The URI host can be set to "any" to take the first open port found
 type TransportRs232 struct {
 	mu        *sync.Mutex
 	lastMsgId uint16     // Sequence counter
@@ -105,7 +107,9 @@ func (t *TransportRs232) RoundTrip(req *Request) (res *Response, err error) {
 		return nil, errors.New(fmt.Sprint("coap: Invalid URL scheme, expected coap+rs232 but got: ", req.URL.Scheme))
 	}
 
-	if runtime.GOOS != "windows" {
+	if req.URL.Host == "any" {
+		serialCfg.Name = req.URL.Host
+	} else if !isWindows() {
 		serialCfg.Name = "/dev/" + req.URL.Host
 	} else {
 		serialCfg.Name = req.URL.Host
@@ -305,19 +309,34 @@ func methodToCode(method string) coapmsg.COAPCode {
 }
 
 func openComPort(serialCfg *serial.Config) (port *serial.Port, err error) {
-	if serialCfg.Name == "" {
-		for i := 0; i < 99; i++ {
-			serialCfg.Name = fmt.Sprintf("COM%d", i)
-			//logrus.WithField("port", serialCfg.Name).Info("Try to open COM port")
-			port, err = serial.OpenPort(serialCfg)
-			if err == nil {
-				return
-			}
+	if serialCfg.Name == "any" {
+		if isWindows() {
+			for i := 0; i < 99; i++ {
+				serialCfg.Name = fmt.Sprintf("COM%d", i)
+				port, err = serial.OpenPort(serialCfg)
+				if err == nil {
+					return
+				}
 
+			}
+		} else {
+			for i := 0; i < 99; i++ {
+				serialCfg.Name = fmt.Sprintf("/dev/ttyS%d", i)
+				port, err = serial.OpenPort(serialCfg)
+				if err == nil {
+					return
+				}
+
+			}
 		}
-		err = errors.New(fmt.Sprint("coap: No open COM ports: ", err.Error()))
+
+		err = errors.New(fmt.Sprint("coap: Failed to find usable serial port: ", err.Error()))
 		return
 	}
 	port, err = serial.OpenPort(serialCfg)
 	return
+}
+
+func isWindows() bool {
+	return runtime.GOOS == "windows"
 }
