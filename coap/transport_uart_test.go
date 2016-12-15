@@ -40,4 +40,13 @@ func TestUrl(t *testing.T) {
 	//	t.Error("Expected Host to be", expectedHost, "but was", uri.Host)
 	//}
 
+	// We can only encode % in IPv6 hosts - normally only used for zoneIDs
+	uri, err = url.Parse("tcp://[%25dev%25tty]")
+	expectedHost := "[%dev%tty]"
+	if err != nil && err.Error() != "parse "+UartScheme+"://%2Fdev%2Ftty: invalid URL escape \"%2F\"" {
+		t.Error("Unexpected error:", err)
+	} else if uri.Host != expectedHost {
+		t.Error("Expected Host to be", expectedHost, "but was", uri.Host)
+	}
+
 }
