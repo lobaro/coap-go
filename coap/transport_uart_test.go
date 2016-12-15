@@ -20,17 +20,17 @@ func TestTransportFail(t *testing.T) {
 
 func TestUrl(t *testing.T) {
 	uri := &url.URL{}
-	uri.Scheme = "coap+rs232"
+	uri.Scheme = UartScheme
 	uri.Host = "/dev/tty"
 
-	expectedUrl := "coap+rs232://%2Fdev%2Ftty"
+	expectedUrl := UartScheme + "://%2Fdev%2Ftty"
 	if uri.String() != expectedUrl {
 		t.Error("Expected URL to be", expectedUrl, "but was", uri.String())
 	}
 
 	uri, err := url.Parse(expectedUrl)
 
-	if err != nil && err.Error() != "parse coap+rs232://%2Fdev%2Ftty: invalid URL escape \"%2F\"" {
+	if err != nil && err.Error() != "parse "+UartScheme+"://%2Fdev%2Ftty: invalid URL escape \"%2F\"" {
 		t.Error("Unexpected error:", err)
 	}
 
