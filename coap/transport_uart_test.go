@@ -6,7 +6,7 @@ import (
 )
 
 func TestTransportFail(t *testing.T) {
-	trans := NewTransportRs232()
+	trans := NewTransportUart()
 
 	res, err := trans.RoundTrip(nil)
 

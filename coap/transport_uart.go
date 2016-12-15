@@ -33,18 +33,20 @@ const (
 	ParitySpace Parity = 'S' // parity bit is always 0
 )
 
-// Transport uses a Serial port to communicate via RS232
+const UartScheme = "coap+uart"
+
+// Transport uses a Serial port to communicate via UART (e.g. RS232)
 // All Serial parameters can be set on the transport
 // The host of the request URL specifies the serial connection, e.g. COM3
-// The URI scheme must be coap+rs232 and valid URIs would be
-// coap+rs232://COM3/sensors/temperature
-// coap+rs232://ttyS2/sensors/temperature
+// The URI scheme must be coap+uart and valid URIs would be
+// coap+uart://COM3/sensors/temperature
+// coap+uart://ttyS2/sensors/temperature
 // Since we can not have a slash (/) in the host name, on linux systems
 // the /dev/ part of the device file handle is added implicitly
 // https://tools.ietf.org/html/rfc3986#page-21 allows system specific Host lookups
 //
 // The URI host can be set to "any" to take the first open port found
-type TransportRs232 struct {
+type TransportUart struct {
 	mu        *sync.Mutex
 	lastMsgId uint16     // Sequence counter
 	rand      *rand.Rand // Random source for token generation
@@ -64,8 +66,8 @@ type TransportRs232 struct {
 	StopBits StopBits
 }
 
-func NewTransportRs232() *TransportRs232 {
-	return &TransportRs232{
+func NewTransportUart() *TransportUart {
+	return &TransportUart{
 		mu:          &sync.Mutex{},
 		rand:        rand.New(rand.NewSource(time.Now().UnixNano())),
 		Baud:        115200,
@@ -77,7 +79,7 @@ func NewTransportRs232() *TransportRs232 {
 
 }
 
-func (t *TransportRs232) RoundTrip(req *Request) (res *Response, err error) {
+func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 
 	if req == nil {
 		return nil, errors.New("coap: Got nil request")
@@ -103,8 +105,8 @@ func (t *TransportRs232) RoundTrip(req *Request) (res *Response, err error) {
 	if req.URL == nil {
 		return nil, errors.New(fmt.Sprint("coap: Missing request URL"))
 	}
-	if req.URL.Scheme != "coap+rs232" {
-		return nil, errors.New(fmt.Sprint("coap: Invalid URL scheme, expected coap+rs232 but got: ", req.URL.Scheme))
+	if req.URL.Scheme != UartScheme {
+		return nil, errors.New(fmt.Sprint("coap: Invalid URL scheme, expected "+UartScheme+" but got: ", req.URL.Scheme))
 	}
 
 	if req.URL.Host == "any" {
@@ -226,7 +228,7 @@ func bytesAreEqual(a, b []byte) bool {
 	return true
 }
 
-func (t *TransportRs232) newSerialConfig() *serial.Config {
+func (t *TransportUart) newSerialConfig() *serial.Config {
 	return &serial.Config{
 		Name:        "",
 		Baud:        t.Baud,
@@ -239,7 +241,7 @@ func (t *TransportRs232) newSerialConfig() *serial.Config {
 
 // BuildMessage creates a coap message based on the request
 // Takes care of closing the request body
-func (t *TransportRs232) buildMessage(req *Request) (*coapmsg.Message, error) {
+func (t *TransportUart) buildMessage(req *Request) (*coapmsg.Message, error) {
 	defer req.Body.Close()
 	if !ValidMethod(req.Method) {
 		return nil, errors.New(fmt.Sprint("coap: Invalid method: ", req.Method))
@@ -278,7 +280,7 @@ func (t *TransportRs232) buildMessage(req *Request) (*coapmsg.Message, error) {
 	return msg, nil
 }
 
-func (t *TransportRs232) nextMessageId() uint16 {
+func (t *TransportUart) nextMessageId() uint16 {
 	t.mu.Lock()
 	t.lastMsgId++
 	msgId := t.lastMsgId
@@ -286,7 +288,7 @@ func (t *TransportRs232) nextMessageId() uint16 {
 	return msgId
 }
 
-func (t *TransportRs232) nextToken() []byte {
+func (t *TransportUart) nextToken() []byte {
 	tok := make([]byte, 4)
 	t.rand.Read(tok)
 	return tok
