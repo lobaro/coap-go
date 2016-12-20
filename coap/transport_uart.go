@@ -88,7 +88,7 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	if !req.Confirmable {
 		// TODO: Implement non-confirmable requests
 		// This will need some concept of "interactions" matched via Message Ids and Tokens
-		return nil, errors.New("coap: Confirmable request not stupported yet!")
+		return nil, errors.New("coap: Non-Confirmable request not stupported yet!")
 	}
 
 	reqMsg, err := t.buildMessage(req)
@@ -118,10 +118,10 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	}
 
 	conn, err := openComPort(serialCfg)
-	defer conn.Close()
 	if err != nil {
 		return
 	}
+	defer conn.Close()
 
 	bin, err := reqMsg.MarshalBinary()
 	if err != nil {
@@ -317,6 +317,7 @@ func openComPort(serialCfg *serial.Config) (port *serial.Port, err error) {
 				serialCfg.Name = fmt.Sprintf("COM%d", i)
 				port, err = serial.OpenPort(serialCfg)
 				if err == nil {
+					//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
 					return
 				}
 
@@ -326,6 +327,7 @@ func openComPort(serialCfg *serial.Config) (port *serial.Port, err error) {
 				serialCfg.Name = fmt.Sprintf("/dev/ttyS%d", i)
 				port, err = serial.OpenPort(serialCfg)
 				if err == nil {
+					//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
 					return
 				}
 

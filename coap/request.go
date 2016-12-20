@@ -1,6 +1,7 @@
 package coap
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"github.com/Lobaro/coap-go/coapmsg"
@@ -97,18 +98,25 @@ func NewRequest(method, urlStr string, body io.Reader) (*Request, error) {
 	if !ValidMethod(method) {
 		return nil, fmt.Errorf("coap: invalid method %q", method)
 	}
+
+	if body == nil {
+		body = ioutil.NopCloser(&bytes.Buffer{})
+	}
+
 	u, err := url.Parse(urlStr)
 	if err != nil {
 		return nil, err
 	}
 	rc, ok := body.(io.ReadCloser)
-	if !ok && body != nil {
+	if !ok {
 		rc = ioutil.NopCloser(body)
 	}
+
 	// The host's colon:port should be normalized. See Issue 14836.
 	u.Host = removeEmptyPort(u.Host)
 	req := &Request{
 		Method:       method,
+		Confirmable:  true,
 		URL:          u,
 		Proto:        "CoAP/1",
 		ProtoVersion: 1,
