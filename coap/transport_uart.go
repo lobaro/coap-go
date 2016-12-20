@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/Lobaro/coap-go/coapmsg"
 	"github.com/Lobaro/slip"
+	"github.com/Sirupsen/logrus"
 	"github.com/tarm/serial"
 	"io"
 	"io/ioutil"
@@ -165,6 +166,7 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	// Did we got an ACK or response?
 	resMsg, err := coapmsg.ParseMessage(buf.Bytes())
 	if err != nil {
+		logrus.WithField("dataStr", string(buf.Bytes())).Error("Failed to parse CoAP message")
 		return
 	}
 
@@ -208,7 +210,7 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 
 	res = &Response{
 		StatusCode: int(resMsg.Code),
-		Status:     fmt.Sprintf("%d.%d %s", resMsg.Code.Class(), resMsg.Code.Detail(), resMsg.Code.String()),
+		Status:     fmt.Sprintf("%d.%02d %s", resMsg.Code.Class(), resMsg.Code.Detail(), resMsg.Code.String()),
 		Body:       ioutil.NopCloser(bytes.NewReader(resMsg.Payload)),
 		Request:    req,
 	}
