@@ -312,13 +312,24 @@ func methodToCode(method string) coapmsg.COAPCode {
 	return coapmsg.GET
 }
 
+// Last successful "any" port. Will be tried first before iterating
+var lastAny = ""
+
 func openComPort(serialCfg *serial.Config) (port *serial.Port, err error) {
 	if serialCfg.Name == "any" {
+		if lastAny != "" {
+			serialCfg.Name = lastAny
+			port, err = serial.OpenPort(serialCfg)
+			if err == nil {
+				return
+			}
+		}
 		if isWindows() {
 			for i := 0; i < 99; i++ {
 				serialCfg.Name = fmt.Sprintf("COM%d", i)
 				port, err = serial.OpenPort(serialCfg)
 				if err == nil {
+					lastAny = serialCfg.Name
 					//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
 					return
 				}
@@ -329,6 +340,7 @@ func openComPort(serialCfg *serial.Config) (port *serial.Port, err error) {
 				serialCfg.Name = fmt.Sprintf("/dev/ttyS%d", i)
 				port, err = serial.OpenPort(serialCfg)
 				if err == nil {
+					lastAny = serialCfg.Name
 					//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
 					return
 				}
