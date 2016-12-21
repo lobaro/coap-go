@@ -135,38 +135,35 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	//###########################################
 	// Read the response
 	//###########################################
-	slipReader := slip.NewReader(conn)
 
-	buf := &bytes.Buffer{}
-
-	var isPrefix bool
-
-	// TODO: Implement read timeouts and retries until first ACK is received
-	for {
-		var p []byte
-		p, isPrefix, err = slipReader.ReadPacket()
-		buf.Write(p)
-
+	packetCh := make(chan []byte)
+	errorCh := make(chan error)
+	var packet []byte
+	go func() {
+		packet, err := readPacket(conn)
 		if err != nil {
-			break
+			errorCh <- err
+		} else {
+			packetCh <- packet
 		}
+		logrus.Info("ReadPacket Done!")
+	}()
 
-		if !isPrefix {
-			break
-		}
+	select {
+	case err = <-errorCh:
+		return
+	case packet = <-packetCh:
+		break
+	case <-req.Context().Done():
+		return nil, req.Context().Err()
 	}
 
-	if err != nil {
-		return nil, err
-	}
-	if isPrefix {
-		return nil, errors.New("coap: Did read incomplete response")
-	}
+	// TODO: Implement retries until first ACK is received
 
 	// Did we got an ACK or response?
-	resMsg, err := coapmsg.ParseMessage(buf.Bytes())
+	resMsg, err := coapmsg.ParseMessage(packet)
 	if err != nil {
-		logrus.WithField("dataStr", string(buf.Bytes())).Error("Failed to parse CoAP message")
+		logrus.WithField("dataStr", string(packet)).Error("Failed to parse CoAP message")
 		return
 	}
 
@@ -215,6 +212,34 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 		Request:    req,
 	}
 	return res, nil
+}
+
+func readPacket(conn *serial.Port) ([]byte, error) {
+	slipReader := slip.NewReader(conn)
+
+	buf := &bytes.Buffer{}
+
+	var isPrefix bool
+
+	for {
+		var p []byte
+		p, isPrefix, err := slipReader.ReadPacket()
+		buf.Write(p)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if !isPrefix {
+			break
+		}
+	}
+
+	if isPrefix {
+		return nil, errors.New("coap: Did read incomplete response")
+	}
+
+	return buf.Bytes(), nil
 }
 
 func bytesAreEqual(a, b []byte) bool {
