@@ -2,6 +2,7 @@ package coap
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"github.com/Lobaro/coap-go/coapmsg"
@@ -80,6 +81,23 @@ func NewTransportUart() *TransportUart {
 
 }
 
+const ACK_RANDOM_FACTOR = 1.5
+const ACK_TIMEOUT = 2 * time.Second
+
+func logMsg(resMsg *coapmsg.Message) {
+	logrus.WithField("Code", resMsg.Code.String()).
+		WithField("Type", resMsg.Type.String()).
+		WithField("Token", resMsg.Token).
+		WithField("MessageID", resMsg.MessageID).
+		WithField("Payload", resMsg.Payload).
+		WithField("OptionCount", resMsg.OptionsRaw().Len()).
+		Info("Got response message")
+}
+
+func (t *TransportUart) ackTimeout() time.Duration {
+	return time.Duration(float64(ACK_TIMEOUT) * ACK_RANDOM_FACTOR)
+}
+
 func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 
 	if req == nil {
@@ -136,6 +154,65 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	// Read the response
 	//###########################################
 
+	// TODO: Implement retries until first ACK is received or some timeout
+	ctx, _ := context.WithTimeout(req.Context(), t.ackTimeout())
+	resMsg, err := readResponse(ctx, conn)
+	if err != nil {
+		return
+	}
+
+	if req.Confirmable && resMsg.MessageID != reqMsg.MessageID {
+		return nil, errors.New("coap: MessageId of response does not match")
+	}
+
+	// TODO: Handle Types: Con and Reset correctly - now we just don't care
+	// Handle postponed response
+	if resMsg.Type == coapmsg.Acknowledgement && resMsg.Code == coapmsg.Empty {
+		//  Client              Server
+		//    |                  |
+		//    |   CON [0x7a10]   |
+		//    | GET /temperature |
+		//    |   (Token 0x73)   |
+		//    +----------------->|
+		//    |                  |
+		//    |   ACK [0x7a10]   | <- We are here!
+		//    |<-----------------+
+		//    |                  |
+		//    ... Time Passes  ...
+		//    |                  |
+		//    |   CON [0x23bb]   |
+		//    |   2.05 Content   |
+		//    |   (Token 0x73)   |
+		//    |     "22.5 C"     |
+		//    |<-----------------+
+		//    |                  |
+		//    |   ACK [0x23bb]   |
+		//    +----------------->|
+		//    |                  |
+		//
+		// Figure 5: A GET Request with a Separate Response
+
+		//ctx, _ := context.WithTimeout(req.Context(), 10 * time.Second)
+		resMsg, err = readResponse(req.Context(), conn)
+		if err != nil {
+			return
+		}
+		logMsg(resMsg)
+	}
+
+	if !bytesAreEqual(reqMsg.Token, resMsg.Token) {
+		return nil, errors.New(fmt.Sprintf("coap: Token of response does not match %x != %x", reqMsg.Token, resMsg.Token))
+	}
+
+	res = &Response{
+		StatusCode: int(resMsg.Code),
+		Status:     fmt.Sprintf("%d.%02d %s", resMsg.Code.Class(), resMsg.Code.Detail(), resMsg.Code.String()),
+		Body:       ioutil.NopCloser(bytes.NewReader(resMsg.Payload)),
+		Request:    req,
+	}
+	return res, nil
+}
+func readResponse(ctx context.Context, conn *serial.Port) (resMsg *coapmsg.Message, err error) {
 	packetCh := make(chan []byte)
 	errorCh := make(chan error)
 	var packet []byte
@@ -154,64 +231,16 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 		return
 	case packet = <-packetCh:
 		break
-	case <-req.Context().Done():
-		return nil, req.Context().Err()
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 
-	// TODO: Implement retries until first ACK is received
-
-	// Did we got an ACK or response?
-	resMsg, err := coapmsg.ParseMessage(packet)
+	msg, err := coapmsg.ParseMessage(packet)
 	if err != nil {
 		logrus.WithField("dataStr", string(packet)).Error("Failed to parse CoAP message")
-		return
+		return nil, err
 	}
-
-	if req.Confirmable && resMsg.MessageID != reqMsg.MessageID {
-		return nil, errors.New("coap: MessageId of response does not match")
-	}
-
-	if !bytesAreEqual(reqMsg.Token, resMsg.Token) {
-		return nil, errors.New("coap: Token of response does not match")
-	}
-
-	// TODO: Handle Types: Con and Reset correctly - now we just don't care
-
-	if resMsg.Type == coapmsg.Acknowledgement && resMsg.Code == coapmsg.Empty {
-		// TODO: Implement delayed responses
-		//  Client              Server
-		//    |                  |
-		//    |   CON [0x7a10]   |
-		//    | GET /temperature |
-		//    |   (Token 0x73)   |
-		//    +----------------->|
-		//    |                  |
-		//    |   ACK [0x7a10]   |
-		//    |<-----------------+
-		//    |                  |
-		//    ... Time Passes  ...
-		//    |                  |
-		//    |   CON [0x23bb]   |
-		//    |   2.05 Content   |
-		//    |   (Token 0x73)   |
-		//    |     "22.5 C"     |
-		//    |<-----------------+
-		//    |                  |
-		//    |   ACK [0x23bb]   |
-		//    +----------------->|
-		//    |                  |
-		//
-		// Figure 5: A GET Request with a Separate Response
-		return nil, errors.New("coap: Received empty ACK. Delayed responses not supported yet!")
-	}
-
-	res = &Response{
-		StatusCode: int(resMsg.Code),
-		Status:     fmt.Sprintf("%d.%02d %s", resMsg.Code.Class(), resMsg.Code.Detail(), resMsg.Code.String()),
-		Body:       ioutil.NopCloser(bytes.NewReader(resMsg.Payload)),
-		Request:    req,
-	}
-	return res, nil
+	return &msg, nil
 }
 
 func readPacket(conn *serial.Port) ([]byte, error) {

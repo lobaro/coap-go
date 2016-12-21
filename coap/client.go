@@ -2,10 +2,12 @@ package coap
 
 import (
 	"errors"
+	"fmt"
 	"github.com/Lobaro/coap-go/coapmsg"
 	"io"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -47,8 +49,7 @@ type RoundTripper interface {
 // needed. Clients are safe for concurrent use by multiple goroutines.
 //
 // A Client is higher-level than a RoundTripper (such as Transport)
-// and additionally handles HTTP details such as cookies and
-// redirects.
+// and additionally handles CoAP details such parallel request limit
 type Client struct {
 	// Transport specifies the mechanism by which individual
 	// CoAP requests are made.
@@ -73,11 +74,19 @@ type Client struct {
 	// RoundTripper implementations should use Request.Cancel
 	// instead of implementing CancelRequest.
 	Timeout time.Duration
+
+	// CoAP spcifies the constant NSTART (default = 1) to limit
+	// the amount of parallel requests. 0 = no limit.
+	// The default client has a value of 1 as proposed by the RFC
+	MaxParallelRequests int32
+	runningRequests     int32
+	mu                  sync.Mutex
 }
 
 // DefaultClient is the default Client and is used by Get, Head, and Post.
 var DefaultClient = &Client{
-	Transport: DefaultTransport,
+	Transport:           DefaultTransport,
+	MaxParallelRequests: 1,
 }
 
 func Get(url string) (*Response, error) {
@@ -88,8 +97,17 @@ func Post(url string, bodyType uint16, body io.Reader) (*Response, error) {
 	return DefaultClient.Post(url, bodyType, body)
 }
 
-func (c *Client) Do(req *Request) (*Response, error) {
-	return c.send(req, c.deadline())
+func (c *Client) Do(req *Request) (res *Response, err error) {
+	c.mu.Lock()
+	if c.runningRequests >= c.MaxParallelRequests && c.MaxParallelRequests != 0 {
+		c.mu.Unlock()
+		return nil, errors.New(fmt.Sprint("MaxParallelRequests exhausted: ", c.MaxParallelRequests))
+	}
+	c.runningRequests++
+	c.mu.Unlock()
+	res, err = c.send(req, c.deadline())
+	atomic.AddInt32(&c.runningRequests, -1)
+	return
 }
 
 // Get issues a GET to the specified URL.
