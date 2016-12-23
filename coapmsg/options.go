@@ -83,11 +83,12 @@ type optionDef struct {
 }
 
 var optionDefs = [256]optionDef{
-	IfMatch:       {valueFormat: valueOpaque, minLen: 0, maxLen: 8},
-	URIHost:       {valueFormat: valueString, minLen: 1, maxLen: 255},
-	ETag:          {valueFormat: valueOpaque, minLen: 1, maxLen: 8},
-	IfNoneMatch:   {valueFormat: valueEmpty, minLen: 0, maxLen: 0},
-	Observe:       {valueFormat: valueUint, minLen: 0, maxLen: 3},
+	IfMatch:     {valueFormat: valueOpaque, minLen: 0, maxLen: 8},
+	URIHost:     {valueFormat: valueString, minLen: 1, maxLen: 255},
+	ETag:        {valueFormat: valueOpaque, minLen: 1, maxLen: 8},
+	IfNoneMatch: {valueFormat: valueEmpty, minLen: 0, maxLen: 0},
+	// Observe a resource for up to 256 Seconds
+	Observe:       {valueFormat: valueUint, minLen: 0, maxLen: 3}, // Client: 0 = register, 1 = unregister; Server: Seq. number
 	URIPort:       {valueFormat: valueUint, minLen: 0, maxLen: 2},
 	LocationPath:  {valueFormat: valueString, minLen: 0, maxLen: 255},
 	URIPath:       {valueFormat: valueString, minLen: 0, maxLen: 255},
