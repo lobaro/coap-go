@@ -226,14 +226,33 @@ func (m *Message) AddOptionFromBytes(opID OptionID, val []byte) {
 	m.AddOption(opID, parseOptionValue(opID, val))
 }
 
+func shouldSkipOption(opID OptionID, val interface{}) bool {
+	b, err := optionValueToBytes(val)
+	if err != nil {
+		panic(err)
+	}
+	// Do not add default or empty options
+	if opID == ContentFormat && b == nil {
+		return true
+	}
+	return false
+}
+
+func isArrayOfStrings(iv reflect.Value) bool {
+	return (iv.Kind() == reflect.Slice || iv.Kind() == reflect.Array) &&
+		iv.Type().Elem().Kind() == reflect.String
+}
+
 // AddOption adds an option.
 func (m *Message) AddOption(opID OptionID, val interface{}) {
 	iv := reflect.ValueOf(val)
-	if (iv.Kind() == reflect.Slice || iv.Kind() == reflect.Array) &&
-		iv.Type().Elem().Kind() == reflect.String {
+	if isArrayOfStrings(iv) {
 		for i := 0; i < iv.Len(); i++ {
 			m.opts = append(m.opts, option{opID, iv.Index(i).Interface()})
 		}
+		return
+	}
+	if shouldSkipOption(opID, val) {
 		return
 	}
 	m.opts = append(m.opts, option{opID, val})
@@ -365,9 +384,12 @@ func (m *Message) MarshalBinary() ([]byte, error) {
 
 	for _, o := range m.opts {
 		b := o.ToBytes()
-		writeOptHeader(int(o.ID)-prev, len(b))
-		buf.Write(b)
-		prev = int(o.ID)
+		if len(b) > 0 {
+			// Skip empty options
+			writeOptHeader(int(o.ID)-prev, len(b))
+			buf.Write(b)
+			prev = int(o.ID)
+		}
 	}
 
 	if len(m.Payload) > 0 {
@@ -469,4 +491,12 @@ func (m *Message) UnmarshalBinary(data []byte) error {
 	}
 	m.Payload = b
 	return nil
+}
+
+func NewAck(messageId uint16) Message {
+	return Message{
+		Type:      Acknowledgement,
+		Code:      Empty,
+		MessageID: messageId,
+	}
 }

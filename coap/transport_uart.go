@@ -52,20 +52,12 @@ type TransportUart struct {
 	mu        *sync.Mutex
 	lastMsgId uint16     // Sequence counter
 	rand      *rand.Rand // Random source for token generation
-	// TODO: add parameter for serial connection like Baud rate.
 
-	Name        string
-	Baud        int
+	Baud        int           // BaudRate
 	ReadTimeout time.Duration // Total timeout
-
-	// Size is the number of data bits. If 0, DefaultSize is used.
-	Size byte
-
-	// Parity is the bit to use and defaults to ParityNone (no parity bit).
-	Parity Parity
-
-	// Number of stop bits to use. Default is 1 (1 stop bit).
-	StopBits StopBits
+	Size        byte          // Size is the number of data bits. If 0, DefaultSize is used.
+	Parity      Parity        // Parity is the bit to use and defaults to ParityNone (no parity bit).
+	StopBits    StopBits      // Number of stop bits to use. Default is 1 (1 stop bit).
 }
 
 func NewTransportUart() *TransportUart {
@@ -84,14 +76,16 @@ func NewTransportUart() *TransportUart {
 const ACK_RANDOM_FACTOR = 1.5
 const ACK_TIMEOUT = 2 * time.Second
 
-func logMsg(resMsg *coapmsg.Message) {
-	logrus.WithField("Code", resMsg.Code.String()).
-		WithField("Type", resMsg.Type.String()).
-		WithField("Token", resMsg.Token).
-		WithField("MessageID", resMsg.MessageID).
-		WithField("Payload", resMsg.Payload).
-		WithField("OptionCount", resMsg.OptionsRaw().Len()).
-		Info("Got response message")
+func logMsg(msg *coapmsg.Message, info string) {
+	bin, _ := msg.MarshalBinary()
+	logrus.WithField("Code", msg.Code.String()).
+		WithField("Type", msg.Type.String()).
+		WithField("Token", msg.Token).
+		WithField("MessageID", msg.MessageID).
+		WithField("Payload", msg.Payload).
+		WithField("OptionCount", msg.OptionsRaw().Len()).
+		WithField("Bin", bin).
+		Info("CoAP message: " + info)
 }
 
 func (t *TransportUart) ackTimeout() time.Duration {
@@ -142,13 +136,11 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	}
 	defer conn.Close()
 
-	bin, err := reqMsg.MarshalBinary()
-	if err != nil {
-		return
-	}
-
 	slipWriter := slip.NewWriter(conn)
-	slipWriter.WritePacket(bin)
+
+	if err := sendMessage(slipWriter, reqMsg); err != nil {
+		return nil, err
+	}
 
 	//###########################################
 	// Read the response
@@ -175,8 +167,8 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 		//    |   (Token 0x73)   |
 		//    +----------------->|
 		//    |                  |
-		//    |   ACK [0x7a10]   | <- We are here!
-		//    |<-----------------+
+		//    |   ACK [0x7a10]   |
+		//    |<-----------------+ <- We are here!
 		//    |                  |
 		//    ... Time Passes  ...
 		//    |                  |
@@ -197,7 +189,12 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 		if err != nil {
 			return
 		}
-		logMsg(resMsg)
+		if resMsg.Type == coapmsg.Confirmable {
+			ack := coapmsg.NewAck(resMsg.MessageID)
+			if err := sendMessage(slipWriter, &ack); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	if !bytesAreEqual(reqMsg.Token, resMsg.Token) {
@@ -212,7 +209,22 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	}
 	return res, nil
 }
-func readResponse(ctx context.Context, conn *serial.Port) (resMsg *coapmsg.Message, err error) {
+
+func sendMessage(writer *slip.SlipWriter, msg *coapmsg.Message) error {
+	bin, err := msg.MarshalBinary()
+	if err != nil {
+		return err
+	}
+
+	logMsg(msg, "Send")
+	err = writer.WritePacket(bin)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func readResponse(ctx context.Context, conn *serial.Port) (*coapmsg.Message, error) {
 	packetCh := make(chan []byte)
 	errorCh := make(chan error)
 	var packet []byte
@@ -227,8 +239,8 @@ func readResponse(ctx context.Context, conn *serial.Port) (resMsg *coapmsg.Messa
 	}()
 
 	select {
-	case err = <-errorCh:
-		return
+	case err := <-errorCh:
+		return nil, err
 	case packet = <-packetCh:
 		break
 	case <-ctx.Done():
@@ -240,6 +252,8 @@ func readResponse(ctx context.Context, conn *serial.Port) (resMsg *coapmsg.Messa
 		logrus.WithField("dataStr", string(packet)).Error("Failed to parse CoAP message")
 		return nil, err
 	}
+	logMsg(&msg, "Received")
+
 	return &msg, nil
 }
 

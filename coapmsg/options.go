@@ -161,33 +161,51 @@ func decodeInt(b []byte) uint32 {
 }
 
 func (o option) ToBytes() []byte {
+	v, err := optionValueToBytes(o.Value)
+	if err != nil {
+		panic(fmt.Errorf("Failed to marshal option %x: %s", o.ID, err))
+	}
+
+	return v
+}
+
+func optionValueToBytes(optVal interface{}) ([]byte, error) {
 	var v uint32
 
-	switch i := o.Value.(type) {
+	switch i := optVal.(type) {
 	case string:
-		return []byte(i)
+		return []byte(i), nil
 	case []byte:
-		return i
+		return i, nil
 	case MediaType:
 		v = uint32(i)
 	case int:
+		v = uint32(i)
+	case int16:
 		v = uint32(i)
 	case int32:
 		v = uint32(i)
 	case uint:
 		v = uint32(i)
+	case uint16:
+		v = uint32(i)
 	case uint32:
 		v = i
 	default:
-		panic(fmt.Errorf("invalid type for option %x: %T (%v)",
-			o.ID, o.Value, o.Value))
+		return nil, fmt.Errorf("invalid type for option type: %T (%v)", optVal, optVal)
 	}
 
-	return encodeInt(v)
+	return encodeInt(v), nil
 }
 
 func parseOptionValue(optionID OptionID, valueBuf []byte) interface{} {
+	// Custom option?
+	if int(optionID) > len(optionDefs) {
+		return valueBuf
+	}
+
 	def := optionDefs[optionID]
+
 	if def.valueFormat == valueUnknown {
 		// Skip unrecognized options (RFC7252 section 5.4.1)
 		return nil
