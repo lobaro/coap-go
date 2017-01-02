@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -78,12 +79,19 @@ const ACK_TIMEOUT = 2 * time.Second
 
 func logMsg(msg *coapmsg.Message, info string) {
 	bin, _ := msg.MarshalBinary()
+
+	options := logrus.Fields{}
+	for _, o := range msg.OptionsRaw() {
+		options["opt:"+strconv.Itoa(int(o.ID))] = o.ToBytes()
+	}
+
 	logrus.WithField("Code", msg.Code.String()).
 		WithField("Type", msg.Type.String()).
 		WithField("Token", msg.Token).
 		WithField("MessageID", msg.MessageID).
 		WithField("Payload", msg.Payload).
 		WithField("OptionCount", msg.OptionsRaw().Len()).
+		WithFields(options).
 		WithField("Bin", bin).
 		Info("CoAP message: " + info)
 }
@@ -332,7 +340,9 @@ func (t *TransportUart) buildMessage(req *Request) (*coapmsg.Message, error) {
 	msg.SetPathString(req.URL.EscapedPath())
 
 	for _, q := range strings.Split(req.URL.RawQuery, "&") {
-		msg.SetOption(coapmsg.URIQuery, q)
+		if q != "" {
+			msg.SetOption(coapmsg.URIQuery, q)
+		}
 	}
 
 	buf := &bytes.Buffer{}

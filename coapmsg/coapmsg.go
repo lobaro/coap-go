@@ -384,12 +384,9 @@ func (m *Message) MarshalBinary() ([]byte, error) {
 
 	for _, o := range m.opts {
 		b := o.ToBytes()
-		if len(b) > 0 {
-			// Skip empty options
-			writeOptHeader(int(o.ID)-prev, len(b))
-			buf.Write(b)
-			prev = int(o.ID)
-		}
+		writeOptHeader(int(o.ID)-prev, len(b))
+		buf.Write(b)
+		prev = int(o.ID)
 	}
 
 	if len(m.Payload) > 0 {
