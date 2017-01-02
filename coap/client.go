@@ -77,7 +77,8 @@ type Client struct {
 
 	// CoAP spcifies the constant NSTART (default = 1) to limit
 	// the amount of parallel requests. 0 = no limit.
-	// The default client has a value of 1 as proposed by the RFC
+	// The default client has a value of 1 as proposed by the RFC.
+	// For an UART connection only 1 parallel request is supported.
 	MaxParallelRequests int32
 	runningRequests     int32
 	mu                  sync.Mutex
@@ -93,6 +94,10 @@ func Get(url string) (*Response, error) {
 	return DefaultClient.Get(url)
 }
 
+func Observe(url string) (*Response, error) {
+	return DefaultClient.Observe(url)
+}
+
 func Post(url string, bodyType uint16, body io.Reader) (*Response, error) {
 	return DefaultClient.Post(url, bodyType, body)
 }
@@ -106,7 +111,12 @@ func (c *Client) Do(req *Request) (res *Response, err error) {
 	c.runningRequests++
 	c.mu.Unlock()
 	res, err = c.send(req, c.deadline())
+
+	// Handle observe
+	if req.Options.Get(coapmsg.Observe) == 0 {
+	}
 	atomic.AddInt32(&c.runningRequests, -1)
+
 	return
 }
 
@@ -119,6 +129,21 @@ func (c *Client) Do(req *Request) (res *Response, err error) {
 // DefaultClient.Do.
 func (c *Client) Get(url string) (*Response, error) {
 	req, err := NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return c.Do(req)
+}
+
+// Reserve issues a CoAP Get request with the observe option set.
+//
+// In the response object the "Next" channel is set and can be
+// used to receive the next response. calling "Close" on the
+// response will stop the observation and notifies the server.
+//
+func (c *Client) Observe(url string) (*Response, error) {
+	req, err := NewRequest("GET", url, nil)
+	req.Options.Add(coapmsg.Observe, 0)
 	if err != nil {
 		return nil, err
 	}

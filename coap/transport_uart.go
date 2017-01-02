@@ -12,7 +12,6 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,6 +37,9 @@ const (
 
 const UartScheme = "coap+uart"
 
+// Timeout to close a serial com port when no data is received
+const CONNECTION_TIMEOUT = 1 * time.Minute
+
 // Transport uses a Serial port to communicate via UART (e.g. RS232)
 // All Serial parameters can be set on the transport
 // The host of the request URL specifies the serial connection, e.g. COM3
@@ -54,11 +56,14 @@ type TransportUart struct {
 	lastMsgId uint16     // Sequence counter
 	rand      *rand.Rand // Random source for token generation
 
+	// UART parameters. In future we might want to configure this per port.
 	Baud        int           // BaudRate
 	ReadTimeout time.Duration // Total timeout
 	Size        byte          // Size is the number of data bits. If 0, DefaultSize is used.
 	Parity      Parity        // Parity is the bit to use and defaults to ParityNone (no parity bit).
 	StopBits    StopBits      // Number of stop bits to use. Default is 1 (1 stop bit).
+
+	connections []Connection
 }
 
 func NewTransportUart() *TransportUart {
@@ -121,8 +126,6 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	// Open the connection and write the request
 	//###########################################
 
-	serialCfg := t.newSerialConfig()
-
 	if req.URL == nil {
 		return nil, errors.New(fmt.Sprint("coap: Missing request URL"))
 	}
@@ -130,23 +133,12 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 		return nil, errors.New(fmt.Sprint("coap: Invalid URL scheme, expected "+UartScheme+" but got: ", req.URL.Scheme))
 	}
 
-	if req.URL.Host == "any" {
-		serialCfg.Name = req.URL.Host
-	} else if !isWindows() {
-		serialCfg.Name = "/dev/" + req.URL.Host
-	} else {
-		serialCfg.Name = req.URL.Host
-	}
-
-	conn, err := openComPort(serialCfg)
+	conn, err := t.connect(req.URL.Host)
 	if err != nil {
 		return
 	}
-	defer conn.Close()
 
-	slipWriter := slip.NewWriter(conn)
-
-	if err := sendMessage(slipWriter, reqMsg); err != nil {
+	if err := sendMessage(conn.writer, reqMsg); err != nil {
 		return nil, err
 	}
 
@@ -199,7 +191,7 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 		}
 		if resMsg.Type == coapmsg.Confirmable {
 			ack := coapmsg.NewAck(resMsg.MessageID)
-			if err := sendMessage(slipWriter, &ack); err != nil {
+			if err := sendMessage(conn.writer, &ack); err != nil {
 				return nil, err
 			}
 		}
@@ -209,16 +201,57 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 		return nil, errors.New(fmt.Sprintf("coap: Token of response does not match %x != %x", reqMsg.Token, resMsg.Token))
 	}
 
-	res = &Response{
+	res = buildResponse(req, resMsg)
+
+	// Handle observe
+	if req.Options.Get(coapmsg.Observe) == 0 {
+		go waitForNotify(conn, req, res)
+	}
+
+	return res, nil
+}
+
+func waitForNotify(conn Connection, req *Request, currResponse *Response) {
+	currResponse.Next = make(chan *Response, 1)
+	defer close(currResponse.Next)
+
+	resMsg, err := readResponse(req.Context(), conn)
+	if err != nil {
+		logrus.WithError(err).Error("Failed to read notify response")
+		return
+	}
+	if resMsg.Type == coapmsg.Confirmable {
+		ack := coapmsg.NewAck(resMsg.MessageID)
+		if err := sendMessage(conn, &ack); err != nil {
+			logrus.WithError(err).Error("Failed to send ACK for notify")
+			return
+		}
+	}
+	res := buildResponse(req, resMsg)
+	// TODO: What does the server send to tell us to stop listening?
+
+	currResponse.Next <- res
+	select {
+	case <-req.Context().Done():
+		logrus.Info("Stopped observer, request context timed out!")
+		return
+	default:
+		go waitForNotify(conn, req, res)
+	}
+
+	return
+}
+
+func buildResponse(req *Request, resMsg *coapmsg.Message) *Response {
+	return &Response{
 		StatusCode: int(resMsg.Code),
 		Status:     fmt.Sprintf("%d.%02d %s", resMsg.Code.Class(), resMsg.Code.Detail(), resMsg.Code.String()),
 		Body:       ioutil.NopCloser(bytes.NewReader(resMsg.Payload)),
 		Request:    req,
 	}
-	return res, nil
 }
 
-func sendMessage(writer *slip.SlipWriter, msg *coapmsg.Message) error {
+func sendMessage(writer CoapPacketWriter, msg *coapmsg.Message) error {
 	bin, err := msg.MarshalBinary()
 	if err != nil {
 		return err
@@ -232,7 +265,7 @@ func sendMessage(writer *slip.SlipWriter, msg *coapmsg.Message) error {
 	return nil
 }
 
-func readResponse(ctx context.Context, conn *serial.Port) (*coapmsg.Message, error) {
+func readResponse(ctx context.Context, conn Connection) (*coapmsg.Message, error) {
 	packetCh := make(chan []byte)
 	errorCh := make(chan error)
 	var packet []byte
@@ -265,9 +298,7 @@ func readResponse(ctx context.Context, conn *serial.Port) (*coapmsg.Message, err
 	return &msg, nil
 }
 
-func readPacket(conn *serial.Port) ([]byte, error) {
-	slipReader := slip.NewReader(conn)
-
+func readPacket(slipReader CoapPacketReader) ([]byte, error) {
 	buf := &bytes.Buffer{}
 
 	var isPrefix bool
@@ -390,49 +421,41 @@ func methodToCode(method string) coapmsg.COAPCode {
 	return coapmsg.GET
 }
 
-// Last successful "any" port. Will be tried first before iterating
-var lastAny = ""
-
-func openComPort(serialCfg *serial.Config) (port *serial.Port, err error) {
-	if serialCfg.Name == "any" {
-		if lastAny != "" {
-			serialCfg.Name = lastAny
-			port, err = serial.OpenPort(serialCfg)
-			if err == nil {
-				return
-			}
-		}
-		if isWindows() {
-			for i := 0; i < 99; i++ {
-				serialCfg.Name = fmt.Sprintf("COM%d", i)
-				port, err = serial.OpenPort(serialCfg)
-				if err == nil {
-					lastAny = serialCfg.Name
-					//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
-					return
-				}
-
-			}
-		} else {
-			for i := 0; i < 99; i++ {
-				serialCfg.Name = fmt.Sprintf("/dev/ttyS%d", i)
-				port, err = serial.OpenPort(serialCfg)
-				if err == nil {
-					lastAny = serialCfg.Name
-					//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
-					return
-				}
-
-			}
-		}
-
-		err = errors.New(fmt.Sprint("coap: Failed to find usable serial port: ", err.Error()))
-		return
+func (t *TransportUart) connect(host string) (*serialConnection, error) {
+	serialCfg := t.newSerialConfig()
+	if host == "any" {
+		serialCfg.Name = host
+	} else if !isWindows() {
+		serialCfg.Name = "/dev/" + host
+	} else {
+		serialCfg.Name = host
 	}
-	port, err = serial.OpenPort(serialCfg)
-	return
-}
 
-func isWindows() bool {
-	return runtime.GOOS == "windows"
+	// can recycle connection?
+	for i, c := range t.connections {
+		if c.Closed() {
+			t.connections = deleteConnection(t.connections, i)
+			continue
+		}
+
+		if c, ok := c.(*serialConnection); (ok && c.config.Name == serialCfg.Name) || serialCfg.Name == "any" {
+			logrus.WithField("Port", c.config.Name).Info("Reuseing Serial Port")
+			return c, nil
+		}
+	}
+
+	port, err := openComPort(serialCfg)
+	if err != nil {
+		return nil, err
+	}
+	conn := &serialConnection{
+		config:   serialCfg,
+		port:     port,
+		reader:   slip.NewReader(port),
+		writer:   slip.NewWriter(port),
+		deadline: time.Now().Add(CONNECTION_TIMEOUT),
+	}
+	t.connections = append(t.connections, conn)
+	go conn.closeAfterDeadline()
+	return conn, nil
 }

@@ -1,6 +1,12 @@
 package coap
 
-import "io"
+import (
+	"io"
+	"time"
+)
+
+// Maximum length of an observe due to the RFC
+const OBSERVE_TIMEOUT = 256 * time.Second
 
 type Response struct {
 	Status     string // e.g. "2.05 Content"
@@ -24,4 +30,12 @@ type Response struct {
 	// Request's Body is nil (having already been consumed).
 	// This is only populated for Client requests.
 	Request *Request
+
+	// Next is a channel for observe requests that contains the next
+	// response from the server when the resource does change.
+	// OBSERVE_TIMEOUT is the longest possible observe duration.
+	//
+	// To stop the observation just send a new get request with
+	// observe option set to 1.
+	Next chan *Response
 }

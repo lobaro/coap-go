@@ -2,6 +2,7 @@ package coap
 
 import (
 	"net/url"
+	"runtime"
 	"strings"
 )
 
@@ -41,4 +42,8 @@ func removeEmptyPort(host string) string {
 		return strings.TrimSuffix(host, ":")
 	}
 	return host
+}
+
+func isWindows() bool {
+	return runtime.GOOS == "windows"
 }
