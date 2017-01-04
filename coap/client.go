@@ -84,10 +84,12 @@ type Client struct {
 	mu                  sync.Mutex
 }
 
+const NSTART = 5 // Default in CoAP Spec is 1. But we do support more.
+
 // DefaultClient is the default Client and is used by Get, Head, and Post.
 var DefaultClient = &Client{
 	Transport:           DefaultTransport,
-	MaxParallelRequests: 1,
+	MaxParallelRequests: NSTART,
 }
 
 func Get(url string) (*Response, error) {
@@ -108,13 +110,10 @@ func (c *Client) Do(req *Request) (res *Response, err error) {
 		c.mu.Unlock()
 		return nil, errors.New(fmt.Sprint("MaxParallelRequests exhausted: ", c.MaxParallelRequests))
 	}
-	c.runningRequests++
+	atomic.AddInt32(&c.runningRequests, 1)
 	c.mu.Unlock()
-	res, err = c.send(req, c.deadline())
+	res, err = c.send(req)
 
-	// Handle observe
-	if req.Options.Get(coapmsg.Observe) == 0 {
-	}
 	atomic.AddInt32(&c.runningRequests, -1)
 
 	return
@@ -167,9 +166,9 @@ func (c *Client) Post(url string, bodyType uint16, body io.Reader) (*Response, e
 	return c.Do(req)
 }
 
-func (c *Client) send(req *Request, deadline time.Time) (*Response, error) {
+func (c *Client) send(req *Request) (*Response, error) {
 
-	resp, err := send(req, c.transport(), deadline)
+	resp, err := send(req, c.transport(), c.deadline())
 	if err != nil {
 		return nil, err
 	}

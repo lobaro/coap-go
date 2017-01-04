@@ -497,3 +497,11 @@ func NewAck(messageId uint16) Message {
 		MessageID: messageId,
 	}
 }
+
+func NewRst(messageId uint16) Message {
+	return Message{
+		Type:      Reset,
+		Code:      Empty,
+		MessageID: messageId,
+	}
+}
