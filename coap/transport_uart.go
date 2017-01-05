@@ -173,14 +173,15 @@ func (t *TransportUart) startInteraction(conn Connection, reqMsg *coapmsg.Messag
 }
 
 func waitForNotify(ia *Interaction, req *Request, currResponse *Response) {
-	currResponse.Next = make(chan *Response, 1)
-	defer close(currResponse.Next)
+	nextCh := make(chan *Response, 1)
+	currResponse.Next = nextCh
+	defer close(nextCh)
 
 	select {
 	case resMsg, ok := <-ia.NotificationCh:
 		if ok {
 			res := buildResponse(req, resMsg)
-			currResponse.Next <- res
+			nextCh <- res
 			go waitForNotify(ia, req, res)
 		} else {
 			logrus.Info("Stopped observer, no more notifies expected.")

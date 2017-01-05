@@ -37,5 +37,5 @@ type Response struct {
 	//
 	// To stop the observation just send a new get request with
 	// observe option set to 1.
-	Next chan *Response
+	Next <-chan *Response
 }

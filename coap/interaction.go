@@ -138,8 +138,11 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 	}
 
 	// Handle observe
-	if reqMsg.Option(coapmsg.Observe) == 0 {
+	ia.NotificationCh = make(chan *coapmsg.Message, 1)
+	if reqMsg.Option(coapmsg.Observe) == 0 && resMsg.Option(coapmsg.Observe) != nil {
 		go ia.waitForNotify(ctx)
+	} else {
+		close(ia.NotificationCh)
 	}
 
 	if err = validateToken(reqMsg, resMsg); err != nil {
@@ -150,7 +153,6 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 }
 
 func (ia *Interaction) waitForNotify(ctx context.Context) {
-	ia.NotificationCh = make(chan *coapmsg.Message, 1)
 	defer close(ia.NotificationCh)
 
 	for {
