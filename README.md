@@ -38,3 +38,35 @@ To use the library in your project, just import
 ```
 import "github.com/lobaro/lobaro-coap/coap"
 ```
+
+# Usage
+
+## Observe
+
+```
+// Start observing, res is the result of a GET request
+res, err := coap.Observe(url)
+if err != nil {
+	panic(err)
+}
+// Gracefully cancel the observe at the end of this function
+defer coap.CancelObserve(res)
+var timeoutCh time.After(60 * time.Second)
+
+for {
+	select {
+	// res.Next returns a response with a new Next channel
+	// as soon as the client receives a notification from the server
+	case nextRes, ok := <-res.Next:
+		if !ok {
+			return
+		}
+		res = nextRes // update res for next interation
+		// Handle the Notification (res)
+	case <-time.After(20 * time.Second):
+		return // Cancel observe after 20 seconds of silence
+	case <-timeoutCh:
+		return // Cancel observe after 60 seconds
+	}
+}
+```

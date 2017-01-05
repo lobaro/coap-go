@@ -108,10 +108,10 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 		return nil, errors.New("coap: Got nil request")
 	}
 
-	if !req.Confirmable {
-		// TODO: Implement non-confirmable requests
-		// This will need some concept of "interactions" matched via Message Ids and Tokens
-		return nil, errors.New("coap: Non-Confirmable request not stupported yet!")
+	// The client might set a specific token, e.g. to cancel an observe.
+	// If there is no token set we create a random token.
+	if len(req.Token) == 0 {
+		req.Token = t.nextToken()
 	}
 
 	reqMsg, err := t.buildReqMessage(req)
@@ -159,7 +159,6 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 }
 
 func (t *TransportUart) startInteraction(conn Connection, reqMsg *coapmsg.Message) *Interaction {
-	reqMsg.Token = t.nextToken()
 	ia := &Interaction{
 		token:     Token(reqMsg.Token),
 		conn:      conn,
@@ -226,6 +225,7 @@ func (t *TransportUart) buildReqMessage(req *Request) (*coapmsg.Message, error) 
 		Code:      methodToCode(req.Method),
 		Type:      msgType,
 		MessageID: t.nextMessageId(),
+		Token:     req.Token,
 	}
 	msg.SetOptions(req.Options)
 	msg.SetPathString(req.URL.EscapedPath())

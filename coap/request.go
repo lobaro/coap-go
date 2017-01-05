@@ -46,6 +46,12 @@ type Request struct {
 	// CoAP Options are like HTTP Headers and used in a similar way
 	Options coapmsg.CoapOptions
 
+	// Token specifies the Reuquest token that is used to identify the response
+	//
+	// If the Token is empty it will be issued by the Transport
+	// The client can set a specific Token, e.g. to cancel a specific observe request
+	Token Token
+
 	// Body is the request's body.
 	//
 	// For client requests a nil body means the request has no

@@ -100,6 +100,10 @@ func Observe(url string) (*Response, error) {
 	return DefaultClient.Observe(url)
 }
 
+func CancelObserve(res *Response) (*Response, error) {
+	return DefaultClient.CancelObserve(res)
+}
+
 func Post(url string, bodyType uint16, body io.Reader) (*Response, error) {
 	return DefaultClient.Post(url, bodyType, body)
 }
@@ -143,6 +147,18 @@ func (c *Client) Get(url string) (*Response, error) {
 func (c *Client) Observe(url string) (*Response, error) {
 	req, err := NewRequest("GET", url, nil)
 	req.Options.Add(coapmsg.Observe, 0)
+	if err != nil {
+		return nil, err
+	}
+	return c.Do(req)
+}
+
+// CancelObserve tells the server to stop sending Notifications
+// about the endpoint related to the given response.
+func (c *Client) CancelObserve(response *Response) (*Response, error) {
+	req, err := NewRequest("GET", response.Request.URL.String(), nil)
+	req.Options.Add(coapmsg.Observe, 1)
+	req.Token = response.Request.Token
 	if err != nil {
 		return nil, err
 	}
