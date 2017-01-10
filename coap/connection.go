@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"github.com/Lobaro/coap-go/coapmsg"
+	"io"
 )
 
 // Connection represents an interface to identify
@@ -102,7 +103,7 @@ func readPacket(reader CoapPacketReader) ([]byte, error) {
 		p, isPrefix, err := reader.ReadPacket()
 		buf.Write(p)
 
-		if err != nil {
+		if err != nil && err != io.EOF {
 			return nil, err
 		}
 

@@ -147,7 +147,10 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	} else {
 		// A new round trip on an existing interaction can only work when we are not listening
 		// for notifications. Else the notifications eat up all responses from the server.
-		ia.StopListenForNotifications()
+		// TODO: Throws without null check when requesting unknown resource
+		if ia.StopListenForNotifications != nil {
+			ia.StopListenForNotifications()
+		}
 	}
 
 	resMsg, err := ia.RoundTrip(req.Context(), reqMsg)
