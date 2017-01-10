@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"github.com/Lobaro/coap-go/coapmsg"
-	"github.com/Sirupsen/logrus"
 	"time"
 )
 
@@ -22,7 +21,9 @@ type Interaction struct {
 	conn       Connection
 	receiveCh  chan *coapmsg.Message
 
-	NotificationCh chan *coapmsg.Message
+	// CancelObserve will stop the interaction to listen for Notifications
+	StopListenForNotifications context.CancelFunc
+	NotificationCh             chan *coapmsg.Message
 }
 
 type Interactions []*Interaction
@@ -33,12 +34,14 @@ func (ia *Interaction) HandleMessage(msg *coapmsg.Message) {
 
 }
 
+var READ_MESSAGE_CTX_DONE = errors.New("Request context done during interaction.readMessage")
+
 func (ia *Interaction) readMessage(ctx context.Context) (*coapmsg.Message, error) {
 	select {
 	case msg := <-ia.receiveCh:
 		return msg, nil
 	case <-ctx.Done():
-		return nil, errors.New("Context timed out during interaction.readMessage")
+		return nil, READ_MESSAGE_CTX_DONE
 	}
 }
 
@@ -138,7 +141,7 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 	}
 
 	// Handle observe
-	ia.NotificationCh = make(chan *coapmsg.Message, 1)
+	ia.NotificationCh = make(chan *coapmsg.Message, 0)
 	if reqMsg.Option(coapmsg.Observe) == 0 && resMsg.Option(coapmsg.Observe) != nil {
 		go ia.waitForNotify(ctx)
 	} else {
@@ -154,36 +157,51 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 
 func (ia *Interaction) waitForNotify(ctx context.Context) {
 	defer close(ia.NotificationCh)
+	withCancel, cancel := context.WithCancel(ctx)
+	ia.StopListenForNotifications = cancel
 
 	for {
-		resMsg, err := ia.readMessage(ctx)
+		resMsg, err := ia.readMessage(withCancel)
 		if err != nil {
-			logrus.WithError(err).Error("Failed to read notify response")
+			if err != READ_MESSAGE_CTX_DONE {
+				log.WithError(err).Error("Stopped observer unexpected")
+			} else {
+				log.Info("Stopped observer")
+			}
 			return
 		}
 		if resMsg.Type == coapmsg.Confirmable {
 			ack := coapmsg.NewAck(resMsg.MessageID)
 			if err := sendMessage(ia.conn, &ack); err != nil {
-				logrus.WithError(err).Error("Failed to send ACK for notify")
+				log.WithError(err).Error("Failed to send ACK for notify")
 				return
 			}
 		}
 
-		// TODO: How does the server tell us to stop listening?
-
 		select {
 		case ia.NotificationCh <- resMsg:
+		// TODO: Should we only send the ACK when the notification is handled?
+		// As it is now, the user might miss a few notifications but can
+		// than still attack to the Next channel in the response
 		case <-ctx.Done():
-			logrus.Info("Stopped observer, request context timed out!")
-			return
-		}
-
-		select {
-		case <-ctx.Done():
-			logrus.Info("Stopped observer, request context timed out!")
+			log.Info("Stopped observer, request context timed out!")
 			return
 		default:
-			continue
+			log.WithField("Token", ia.token).Warn("No handler for notification registered")
+		}
+
+		// An error response MUST lead to a removal of the observer on server side.
+		//
+		// [...], in the event that the state of a resource changes in
+		// a way that would cause a normal GET request at that time to return a
+		// non-2.xx response (for example, when the resource is deleted), the
+		// server SHOULD notify the client by sending a notification with an
+		// appropriate response code (such as 4.04 Not Found) and subsequently
+		// MUST remove the associated entry from the list of observers of the
+		// resource.
+		if resMsg.Code.IsError() {
+			log.Info("Stopped observer, get error response!")
+			return
 		}
 	}
 
@@ -194,7 +212,7 @@ func validateMessageId(req, res *coapmsg.Message) error {
 	if req.MessageID != res.MessageID {
 		// This should never happen
 		err := errors.New("coap: CRITICAL - MessageId of response does not match")
-		logrus.WithError(err).
+		log.WithError(err).
 			WithField("ReqMessageId", req.MessageID).
 			WithField("ResMessageId", res.MessageID).
 			WithField("ReqToken", req.Token).
@@ -209,7 +227,7 @@ func validateToken(req, res *coapmsg.Message) error {
 	if !bytes.Equal(req.Token, res.Token) {
 		// This should never happen
 		err := errors.New("coap: CRITICAL - Token of response does not match")
-		logrus.WithError(err).
+		log.WithError(err).
 			WithField("ReqMessageId", req.MessageID).
 			WithField("ResMessageId", res.MessageID).
 			WithField("ReqToken", req.Token).

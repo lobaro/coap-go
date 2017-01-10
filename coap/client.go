@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Lobaro/coap-go/coapmsg"
+	"github.com/Sirupsen/logrus"
 	"io"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -85,6 +85,12 @@ type Client struct {
 }
 
 const NSTART = 5 // Default in CoAP Spec is 1. But we do support more.
+
+var log logrus.FieldLogger = logrus.StandardLogger()
+
+func SetLogger(logger logrus.FieldLogger) {
+	log = logger
+}
 
 // DefaultClient is the default Client and is used by Get, Head, and Post.
 var DefaultClient = &Client{

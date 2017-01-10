@@ -132,6 +132,14 @@ func (c COAPCode) Detail() uint8 {
 	return uint8(c) & (0xFF >> 3)
 }
 
+func (c COAPCode) IsSuccess() bool {
+	return c.Class() == 2
+}
+
+func (c COAPCode) IsError() bool {
+	return c.Class() != 2
+}
+
 func BuildCode(class, detail uint8) COAPCode {
 	return COAPCode((class << 5) | detail)
 }

@@ -45,7 +45,10 @@ func (c *serialConnection) WritePacket(p []byte) (err error) {
 
 func (c *serialConnection) Close() error {
 	c.closed = true
-	return c.port.Close()
+	if c.port != nil {
+		return c.port.Close()
+	}
+	return nil
 }
 
 func (c *serialConnection) Closed() bool {
@@ -81,9 +84,9 @@ func (c *serialConnection) closeAfterDeadline() {
 			if now.Equal(c.deadline) || now.After(c.deadline) {
 				err := c.Close()
 				if err != nil {
-					logrus.WithError(err).WithField("Port", c.config.Name).Error("Failed to close Serial Port")
+					log.WithError(err).WithField("Port", c.config.Name).Error("Failed to close Serial Port")
 				} else {
-					logrus.WithField("Port", c.config.Name).Info("Serial Port closed after deadline")
+					log.WithField("Port", c.config.Name).Info("Serial Port closed after deadline")
 				}
 				return
 			}

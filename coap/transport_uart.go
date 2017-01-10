@@ -81,21 +81,21 @@ func NewTransportUart() *TransportUart {
 }
 
 func msgLogEntry(msg *coapmsg.Message) *logrus.Entry {
-	bin, _ := msg.MarshalBinary()
+	//bin, _ := msg.MarshalBinary()
 
 	options := logrus.Fields{}
 	for _, o := range msg.OptionsRaw() {
 		options["opt:"+strconv.Itoa(int(o.ID))] = o.ToBytes()
 	}
 
-	return logrus.WithField("Code", msg.Code.String()).
+	return log.WithField("Code", msg.Code.String()).
 		WithField("Type", msg.Type.String()).
 		WithField("Token", msg.Token).
 		WithField("MessageID", msg.MessageID).
-		WithField("Payload", msg.Payload).
+		//WithField("Payload", msg.Payload).
 		WithField("OptionCount", msg.OptionsRaw().Len()).
-		WithFields(options).
-		WithField("Bin", bin)
+		WithFields(options)
+	//WithField("Bin", bin)
 }
 
 func logMsg(msg *coapmsg.Message, info string) {
@@ -139,8 +139,16 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	// Start an interaction and send the request
 	//###########################################
 
-	// TODO: Pass t.NextToken instead of reqMsg and set the token on sendMessage?
-	ia := t.startInteraction(conn, reqMsg)
+	// When canceling an observer we must reuse the interaction
+	ia, err := conn.FindInteraction(req.Token, MessageId(0))
+	if ia == nil || err != nil {
+		// TODO: Pass t.NextToken instead of reqMsg and set the token on sendMessage?
+		ia = t.startInteraction(conn, reqMsg)
+	} else {
+		// A new round trip on an existing interaction can only work when we are not listening
+		// for notifications. Else the notifications eat up all responses from the server.
+		ia.StopListenForNotifications()
+	}
 
 	resMsg, err := ia.RoundTrip(req.Context(), reqMsg)
 	if err != nil {
@@ -165,7 +173,7 @@ func (t *TransportUart) startInteraction(conn Connection, reqMsg *coapmsg.Messag
 		receiveCh: make(chan *coapmsg.Message, 0),
 	}
 
-	logrus.WithField("Token", Token(reqMsg.Token)).Info("Start interaction")
+	log.WithField("Token", Token(reqMsg.Token)).Info("Start interaction")
 
 	conn.AddInteraction(ia)
 
@@ -173,28 +181,31 @@ func (t *TransportUart) startInteraction(conn Connection, reqMsg *coapmsg.Messag
 }
 
 func waitForNotify(ia *Interaction, req *Request, currResponse *Response) {
-	nextCh := make(chan *Response, 1)
-	currResponse.Next = nextCh
-	defer close(nextCh)
+
+	defer close(currResponse.next)
 
 	select {
 	case resMsg, ok := <-ia.NotificationCh:
 		if ok {
 			res := buildResponse(req, resMsg)
-			nextCh <- res
+			currResponse.next <- res
+
 			go waitForNotify(ia, req, res)
 		} else {
-			logrus.Info("Stopped observer, no more notifies expected.")
+			// Also happens for all non observe requests since ia.NotificationCh will be closed.
+			log.Info("Stopped observer, no more notifies expected.")
 		}
 	}
 }
 
 func buildResponse(req *Request, resMsg *coapmsg.Message) *Response {
+	nextCh := make(chan *Response, 0)
 	return &Response{
 		StatusCode: int(resMsg.Code),
 		Status:     fmt.Sprintf("%d.%02d %s", resMsg.Code.Class(), resMsg.Code.Detail(), resMsg.Code.String()),
 		Body:       ioutil.NopCloser(bytes.NewReader(resMsg.Payload)),
 		Request:    req,
+		next:       nextCh,
 	}
 }
 
@@ -311,14 +322,14 @@ func (t *TransportUart) connect(host string) (*serialConnection, error) {
 		}
 
 		if c, ok := c.(*serialConnection); (ok && c.config.Name == serialCfg.Name) || serialCfg.Name == "any" {
-			logrus.WithField("Port", c.config.Name).Info("Reuseing Serial Port")
+			log.WithField("Port", c.config.Name).Info("Reuseing Serial Port")
 			return c, nil
 		}
 	}
 
 	port, err := openComPort(serialCfg)
 	if err != nil {
-		return nil, err
+		return nil, wrapError(err, "Failed to open serial port")
 	}
 	conn := &serialConnection{
 		config:   serialCfg,

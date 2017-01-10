@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"github.com/Lobaro/coap-go/coapmsg"
-	"github.com/Sirupsen/logrus"
 )
 
 // Connection represents an interface to identify
@@ -86,8 +85,7 @@ func readMessage(ctx context.Context, conn Connection) (*coapmsg.Message, error)
 
 	msg, err := coapmsg.ParseMessage(packet)
 	if err != nil {
-		logrus.WithField("dataStr", string(packet)).Error("Failed to parse CoAP message")
-		return nil, err
+		return nil, wrapError(err, "Failed to parse CoAP message")
 	}
 	logMsg(&msg, "Received")
 
