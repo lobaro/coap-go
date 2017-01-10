@@ -125,6 +125,15 @@ func openComPort(serialCfg *serial.Config) (port *serial.Port, err error) {
 			}
 		} else {
 			for i := 0; i < 99; i++ {
+				serialCfg.Name = fmt.Sprintf("/dev/tty%d", i)
+				port, err = serial.OpenPort(serialCfg)
+				if err == nil {
+					lastAny = serialCfg.Name
+					//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
+					return
+				}
+			}
+			for i := 0; i < 99; i++ {
 				serialCfg.Name = fmt.Sprintf("/dev/ttyS%d", i)
 				port, err = serial.OpenPort(serialCfg)
 				if err == nil {
@@ -132,7 +141,15 @@ func openComPort(serialCfg *serial.Config) (port *serial.Port, err error) {
 					//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
 					return
 				}
-
+			}
+			for i := 0; i < 10; i++ {
+				serialCfg.Name = fmt.Sprintf("/dev/ttyUSB%d", i)
+				port, err = serial.OpenPort(serialCfg)
+				if err == nil {
+					lastAny = serialCfg.Name
+					//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
+					return
+				}
 			}
 		}
 
