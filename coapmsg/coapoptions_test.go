@@ -6,7 +6,7 @@ import (
 )
 
 var numbers = []struct {
-	Num        OptionID
+	Num        OptionId
 	Critical   bool
 	Unsafe     bool
 	NoCahceKey bool
@@ -58,7 +58,7 @@ func TestNumbers(t *testing.T) {
 func _TestFindNumbers(t *testing.T) {
 	for i := 3000; i < 3200; i++ {
 		def := OptionDef{
-			Number: OptionID(i),
+			Number: OptionId(i),
 		}
 		if def.Critical() {
 			continue

@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 )
@@ -159,7 +158,40 @@ type Message struct {
 
 	Token, Payload []byte
 
-	opts options
+	options CoapOptions
+}
+
+func NewMessage() Message {
+	return Message{
+		options: CoapOptions{},
+	}
+}
+
+func NewAck(messageId uint16) Message {
+	return Message{
+		Type:      Acknowledgement,
+		Code:      Empty,
+		MessageID: messageId,
+	}
+}
+
+func NewRst(messageId uint16) Message {
+	return Message{
+		Type:      Reset,
+		Code:      Empty,
+		MessageID: messageId,
+	}
+}
+
+func (m *Message) Options() CoapOptions {
+	if m.options == nil {
+		m.options = CoapOptions{}
+	}
+	return m.options
+}
+
+func (m *Message) SetOptions(o CoapOptions) {
+	m.options = o
 }
 
 // IsConfirmable returns true if this message is confirmable.
@@ -167,44 +199,15 @@ func (m Message) IsConfirmable() bool {
 	return m.Type == Confirmable
 }
 
-// Options gets all the values for the given option.
-func (m Message) Options(o OptionID) []interface{} {
-	var rv []interface{}
-
-	for _, v := range m.opts {
-		if o == v.ID {
-			rv = append(rv, v.Value)
-		}
-	}
-
-	return rv
-}
-
-func (m Message) OptionsRaw() options {
-	return m.opts
-}
-
-// Option gets the first value for the given option ID.
-func (m Message) Option(o OptionID) interface{} {
-	for _, v := range m.opts {
-		if o == v.ID {
-			return v.Value
-		}
-	}
-	return nil
-}
-
-func (m Message) optionStrings(id OptionID) []string {
-	var rv []string
-	for _, o := range m.Options(id) {
-		rv = append(rv, o.(string))
-	}
-	return rv
-}
-
 // Path gets the Path set on this message if any.
 func (m Message) Path() []string {
-	return m.optionStrings(URIPath)
+	var path []string
+	if pathOpts, ok := m.options[URIPath]; ok {
+		for _, o := range pathOpts {
+			path = append(path, o.AsString())
+		}
+	}
+	return path
 }
 
 // PathString gets a path as a / separated string.
@@ -222,69 +225,9 @@ func (m *Message) SetPathString(s string) {
 
 // SetPath updates or adds a URIPath attribute on this message.
 func (m *Message) SetPath(s []string) {
-	m.SetOption(URIPath, s)
-}
-
-// RemoveOption removes all references to an option
-func (m *Message) RemoveOption(opID OptionID) {
-	m.opts = m.opts.Remove(opID)
-}
-
-func (m *Message) AddOptionFromBytes(opID OptionID, val []byte) {
-	m.AddOption(opID, parseOptionValue(opID, val))
-}
-
-func shouldSkipOption(opID OptionID, val interface{}) bool {
-	b, err := optionValueToBytes(val)
-	if err != nil {
-		panic(err)
-	}
-	// Do not add default or empty options
-	if opID == ContentFormat && b == nil {
-		return true
-	}
-	return false
-}
-
-func isArrayOfStrings(iv reflect.Value) bool {
-	return (iv.Kind() == reflect.Slice || iv.Kind() == reflect.Array) &&
-		iv.Type().Elem().Kind() == reflect.String
-}
-
-// AddOption adds an option.
-func (m *Message) AddOption(opID OptionID, val interface{}) {
-	iv := reflect.ValueOf(val)
-	if isArrayOfStrings(iv) {
-		for i := 0; i < iv.Len(); i++ {
-			m.opts = append(m.opts, option{opID, iv.Index(i).Interface()})
-		}
-		return
-	}
-	if shouldSkipOption(opID, val) {
-		return
-	}
-	m.opts = append(m.opts, option{opID, val})
-}
-
-func (m *Message) SetOptionFromBytes(opID OptionID, val []byte) {
-	m.SetOption(opID, parseOptionValue(opID, val))
-}
-
-// SetOption sets an option, discarding any previous value
-func (m *Message) SetOption(opID OptionID, val interface{}) {
-	m.RemoveOption(opID)
-	m.AddOption(opID, val)
-}
-
-// SetOptions copies the given options to the message
-// replacing existing options
-func (m *Message) SetOptions(opts CoapOptions) {
-	m.opts = make(options, 0)
-
-	for id, o := range opts {
-		for _, v := range o {
-			m.opts = append(m.opts, option{ID: id, Value: parseOptionValue(id, v.AsBytes())})
-		}
+	m.Options().Del(URIPath)
+	for _, part := range s {
+		m.Options().Add(URIPath, part)
 	}
 }
 
@@ -385,15 +328,22 @@ func (m *Message) MarshalBinary() ([]byte, error) {
 		writeExt(l, lx)
 	}
 
-	sort.Stable(&m.opts)
+	options := m.Options()
+
+	ids := optionsIds{}
+	for id := range options {
+		ids = append(ids, id)
+	}
+	sort.Sort(ids)
 
 	prev := 0
 
-	for _, o := range m.opts {
-		b := o.ToBytes()
-		writeOptHeader(int(o.ID)-prev, len(b))
-		buf.Write(b)
-		prev = int(o.ID)
+	for _, id := range ids {
+		for _, val := range options[id] {
+			writeOptHeader(int(id)-prev, len(val))
+			buf.Write(val)
+			prev = int(id)
+		}
 	}
 
 	if len(m.Payload) > 0 {
@@ -459,7 +409,14 @@ func (m *Message) UnmarshalBinary(data []byte) error {
 
 	for len(b) > 0 {
 		if b[0] == 0xff {
+
 			b = b[1:]
+
+			// The presence of a marker followed by a zero-length
+			// payload MUST be processed as a message format error.
+			if len(b) == 0 {
+				return errors.New("Message format error: Payload marker (0xFF) followed by zero-length payload")
+			}
 			break
 		}
 
@@ -485,9 +442,19 @@ func (m *Message) UnmarshalBinary(data []byte) error {
 			return errors.New("truncated")
 		}
 
-		oid := OptionID(prev + delta)
-		if opval := parseOptionValue(oid, b[:length]); opval != nil {
-			m.opts = append(m.opts, option{ID: oid, Value: opval})
+		oid := OptionId(prev + delta)
+		val := b[:length]
+		def, ok := optionDefs[oid]
+		if ok && (len(val) < def.minLen || len(val) > def.maxLen) {
+			// Skip options with illegal value length (RFC7252 section 5.4.3 and 5.4.1.)
+			if oid.Critical() {
+				// MUST cause the return of a 4.02 (Bad Option)
+				// MUST cause the message / response to be rejected
+				return errors.New("Critical option with invalid length found")
+			}
+			// Upon reception, unrecognized options of class "elective" MUST be silently ignored.
+		} else {
+			m.Options().Add(oid, val)
 		}
 
 		b = b[length:]
@@ -495,20 +462,4 @@ func (m *Message) UnmarshalBinary(data []byte) error {
 	}
 	m.Payload = b
 	return nil
-}
-
-func NewAck(messageId uint16) Message {
-	return Message{
-		Type:      Acknowledgement,
-		Code:      Empty,
-		MessageID: messageId,
-	}
-}
-
-func NewRst(messageId uint16) Message {
-	return Message{
-		Type:      Reset,
-		Code:      Empty,
-		MessageID: messageId,
-	}
 }

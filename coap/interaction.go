@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"github.com/Lobaro/coap-go/coapmsg"
-	"github.com/Sirupsen/logrus"
 )
 
 type Token []byte
@@ -144,9 +142,7 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 	// Handle observe
 	ia.NotificationCh = make(chan *coapmsg.Message, 0)
 
-	// TODO: uint32(0) is ugly, replace options in message by CoapOptions
-	if reqMsg.Option(coapmsg.Observe) == uint32(0) && resMsg.Option(coapmsg.Observe) != nil {
-
+	if reqMsg.Options().Get(coapmsg.Observe) == nil && resMsg.Options().Get(coapmsg.Observe) != nil {
 		go ia.waitForNotify(ctx)
 	} else {
 		close(ia.NotificationCh)

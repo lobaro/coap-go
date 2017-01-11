@@ -6,8 +6,9 @@ import (
 	"encoding/binary"
 )
 
+// Currently only used in tests to find options
 type OptionDef struct {
-	Number       OptionID
+	Number       OptionId
 	MinLength    int
 	MaxLength    int
 	DefaultValue []byte // Or interface{} or OptionValue?
@@ -88,11 +89,11 @@ func (v OptionValue) AsBytes() []byte {
 
 // A CoapOptions represents a option mapping
 // keys to sets of values.
-type CoapOptions map[OptionID][]OptionValue
+type CoapOptions map[OptionId][]OptionValue
 
 // Add adds the key, value pair to the header.
 // It appends to any existing values associated with key.
-func (h CoapOptions) Add(key OptionID, value interface{}) error {
+func (h CoapOptions) Add(key OptionId, value interface{}) error {
 	v, err := optionValueToBytes(value)
 	if err != nil {
 		return err
@@ -104,7 +105,7 @@ func (h CoapOptions) Add(key OptionID, value interface{}) error {
 // Set sets the header entries associated with key to
 // the single element value. It replaces any existing
 // values associated with key.
-func (h CoapOptions) Set(key OptionID, value interface{}) error {
+func (h CoapOptions) Set(key OptionId, value interface{}) error {
 	v, err := optionValueToBytes(value)
 	if err != nil {
 		return err
@@ -117,7 +118,7 @@ func (h CoapOptions) Set(key OptionID, value interface{}) error {
 // If there are no values associated with the key, Get returns
 // NilOption. Get is a convenience method. For more
 // complex queries, access the map directly.
-func (h CoapOptions) Get(key OptionID) OptionValue {
+func (h CoapOptions) Get(key OptionId) OptionValue {
 	if h == nil {
 		return NilOption
 	}
@@ -129,6 +130,6 @@ func (h CoapOptions) Get(key OptionID) OptionValue {
 }
 
 // Del deletes the values associated with key.
-func (h CoapOptions) Del(key OptionID) {
+func (h CoapOptions) Del(key OptionId) {
 	delete(h, key)
 }

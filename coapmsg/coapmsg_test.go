@@ -33,24 +33,20 @@ func assertEqualMessages(t *testing.T, e, a Message) {
 		t.Errorf("Expected payload %#v, got %#v", e.Payload, a.Payload)
 	}
 
-	if len(e.opts) != len(a.opts) {
-		t.Errorf("Expected %v options, got %v", len(e.opts), len(a.opts))
+	if len(e.options) != len(a.options) {
+		t.Errorf("Expected %v options, got %v", len(e.options), len(a.options))
 	} else {
-		for i, _ := range e.opts {
-			if e.opts[i].ID != a.opts[i].ID {
-				t.Errorf("Expected option ID %v, got %v", e.opts[i].ID, a.opts[i].ID)
+		for id, vals := range e.options {
+			if len(e.options[id]) != len(a.options[id]) {
+				t.Errorf("Expected option ID %v length to be equal, got %v != %v", id, len(e.options[id]), len(a.options[id]))
 				continue
 			}
-			switch e.opts[i].Value.(type) {
-			case []byte:
-				expected := e.opts[i].Value.([]byte)
-				actual := a.opts[i].Value.([]byte)
+
+			for i, val := range vals {
+				expected := val
+				actual := a.options[id][i]
 				if !bytes.Equal(expected, actual) {
-					t.Errorf("Expected Option ID %v value %v, got %v", e.opts[i].ID, expected, actual)
-				}
-			default:
-				if e.opts[i].Value != a.opts[i].Value {
-					t.Errorf("Expected Option ID %v value %v, got %v", e.opts[i].ID, e.opts[i].Value, a.opts[i].Value)
+					t.Errorf("Expected Option ID %v value %v, got %v", id, expected, actual)
 				}
 			}
 		}
@@ -75,20 +71,21 @@ func TestCode(t *testing.T) {
 func TestSetOptions(t *testing.T) {
 	msg := Message{}
 
-	opts := CoapOptions{}
-	opts.Set(ContentFormat, AppJSON)
-	opts.Add(ContentFormat, AppXML)
+	msg.Options().Set(ContentFormat, AppJSON)
+	msg.Options().Add(ContentFormat, AppXML)
 
-	msg.SetOptions(opts)
-
-	if len(msg.OptionsRaw()) != 2 {
-		t.Error("Expected 1 option but got", len(msg.OptionsRaw()))
+	if len(msg.options) != 1 {
+		t.Error("Expected 1 option but got", len(msg.options))
 	} else {
-		if msg.OptionsRaw()[0].Value != AppJSON {
-			t.Error("Expected option value", AppJSON, "but got", msg.OptionsRaw()[0].Value)
-		}
-		if msg.OptionsRaw()[1].Value != AppXML {
-			t.Error("Expected option value", AppXML, "but got", msg.OptionsRaw()[1].Value)
+		if len(msg.options[ContentFormat]) != 2 {
+			t.Error("Expected 2 ContentFormat options but got", len(msg.options[ContentFormat]))
+		} else {
+			if MediaType(msg.options[ContentFormat][0].AsUInt16()) != AppJSON {
+				t.Error("Expected option value", AppJSON, "but got", msg.options[ContentFormat][0])
+			}
+			if MediaType(msg.options[ContentFormat][1].AsUInt16()) != AppXML {
+				t.Error("Expected option value", AppXML, "but got", msg.options[ContentFormat][0])
+			}
 		}
 	}
 }
@@ -148,9 +145,14 @@ func TestMessageConfirmable(t *testing.T) {
 }
 
 func TestMissingOption(t *testing.T) {
-	got := Message{}.Option(MaxAge)
-	if got != nil {
-		t.Errorf("Expected nil, got %v", got)
+	gotEmpty := Message{}.options.Get(MaxAge)
+	if len(gotEmpty) != 0 {
+		t.Errorf("Expected empty slice, got %v", gotEmpty)
+	}
+
+	gotNil := Message{}.options[MaxAge]
+	if gotNil != nil {
+		t.Errorf("Expected nil, got %v", gotNil)
 	}
 }
 
@@ -221,8 +223,8 @@ func TestEncodeMessageSmall(t *testing.T) {
 		MessageID: 12345,
 	}
 
-	req.AddOption(ETag, []byte("weetag"))
-	req.AddOption(MaxAge, 3)
+	req.Options().Add(ETag, []byte("weetag"))
+	req.Options().Add(MaxAge, 3)
 
 	data, err := req.MarshalBinary()
 	if err != nil {
@@ -247,8 +249,8 @@ func TestEncodeMessageSmallWithPayload(t *testing.T) {
 		Payload:   []byte("hi"),
 	}
 
-	req.AddOption(ETag, []byte("weetag"))
-	req.AddOption(MaxAge, 3)
+	req.Options().Add(ETag, []byte("weetag"))
+	req.Options().Add(MaxAge, 3)
 
 	data, err := req.MarshalBinary()
 	if err != nil {
@@ -287,29 +289,41 @@ func TestInvalidMessageParsing(t *testing.T) {
 	}
 }
 
+func TestMessageWithEmptyPayloadButMarker(t *testing.T) {
+	_, err := ParseMessage([]byte{0x40, 0x01, 0xab, 0xcd,
+		0xff, // Payload marker
+	})
+	expected := "Message format error: Payload marker (0xFF) followed by zero-length payload"
+	if err.Error() != expected {
+		t.Errorf("Expected '%s' but got '%s'", expected, err.Error())
+	}
+}
+
 func TestOptionsWithIllegalLengthAreIgnoredDuringParsing(t *testing.T) {
 	exp := Message{
 		Type:      Confirmable,
 		Code:      GET,
 		MessageID: 0xabcd,
-		Payload:   []byte{},
+		Payload:   []byte{0xef},
 	}
 	msg, err := ParseMessage([]byte{0x40, 0x01, 0xab, 0xcd,
-		0x73, // URI-Port option (uint) with length 3 (valid lengths are 0-2)
-		0x11, 0x22, 0x33, 0xff})
-	if err != nil {
-		t.Fatalf("Error parsing message: %v", err)
+		0x73, // URI-Port option (id 7) (uint) with length 3 (valid lengths are 0-2)
+		0x11, 0x22, 0x33, 0xff, 0xdd})
+	expected := "Critical option with invalid length found"
+	if err.Error() != expected {
+		t.Errorf("Expected '%s' but got '%s'", expected, err.Error())
 	}
-	if fmt.Sprintf("%#v", exp) != fmt.Sprintf("%#v", msg) {
-		t.Errorf("Expected\n%#v\ngot\n%#v", exp, msg)
-	}
+	//if fmt.Sprintf("%#v", exp) != fmt.Sprintf("%#v", msg) {
+	//	t.Errorf("Expected\n%#v\ngot\n%#v", exp, msg)
+	//}
 
 	msg, err = ParseMessage([]byte{0x40, 0x01, 0xab, 0xcd,
 		0xd5, 0x01, // Max-Age option (uint) with length 5 (valid lengths are 0-4)
-		0x11, 0x22, 0x33, 0x44, 0x55, 0xff})
+		0x11, 0x22, 0x33, 0x44, 0x55, 0xff, 0xef})
 	if err != nil {
 		t.Fatalf("Error parsing message: %v", err)
 	}
+
 	if fmt.Sprintf("%#v", exp) != fmt.Sprintf("%#v", msg) {
 		t.Errorf("Expected\n%#v\ngot\n%#v", exp, msg)
 	}
@@ -441,14 +455,15 @@ func TestEncodeSeveral(t *testing.T) {
 
 func TestPathAsOption(t *testing.T) {
 	m := &Message{Type: Confirmable, Code: GET, MessageID: 12345}
-	m.SetOption(LocationPath, []string{"a", "b"})
+	m.Options().Set(LocationPath, "a")
+	m.Options().Add(LocationPath, "b")
 	got, err := m.MarshalBinary()
 	if err != nil {
 		t.Fatalf("Error marshaling: %v", err)
 	}
 	exp := []byte{0x40, 0x1, 0x30, 0x39, 0x81, 0x61, 0x1, 0x62}
 	if !bytes.Equal(got, exp) {
-		t.Errorf("Got %#v, wanted %#v", got, exp)
+		t.Errorf("Got \n%#v\nwanted \n%#v", got, exp)
 	}
 }
 
@@ -555,7 +570,7 @@ func TestDecodeLargePath(t *testing.T) {
 		Payload:   []byte{},
 	}
 
-	exp.SetOption(URIPath, path)
+	exp.Options().Set(URIPath, path)
 
 	if fmt.Sprintf("%#v", exp) != fmt.Sprintf("%#v", req) {
 		b, _ := exp.MarshalBinary()
@@ -581,11 +596,13 @@ func TestDecodeMessageSmaller(t *testing.T) {
 		Payload:   []byte{},
 	}
 
-	exp.SetOption(ETag, []byte("weetag"))
-	exp.SetOption(MaxAge, uint32(3))
+	exp.Options().Set(ETag, []byte("weetag"))
+	exp.Options().Set(MaxAge, uint32(3))
 
-	if fmt.Sprintf("%#v", exp) != fmt.Sprintf("%#v", req) {
-		t.Fatalf("Expected\n%#v\ngot\n%#v", exp, req)
+	expected := fmt.Sprintf("%#v", exp)
+	actual := fmt.Sprintf("%#v", req)
+	if expected != actual {
+		t.Fatalf("Expected\n%s\ngot\n%s", expected, actual)
 	}
 }
 
@@ -670,8 +687,8 @@ func TestExample1(t *testing.T) {
 		t.Errorf("Expected message ID 0x7d34, got 0x%x", msg.MessageID)
 	}
 
-	if msg.Option(URIPath).(string) != "temperature" {
-		t.Errorf("Incorrect uri path: %q", msg.Option(URIPath))
+	if msg.Options().Get(URIPath).AsString() != "temperature" {
+		t.Errorf("Incorrect uri path: %q", msg.Options().Get(URIPath).AsString())
 	}
 
 	if len(msg.Token) > 0 {
@@ -764,12 +781,15 @@ func TestDecodeContentFormatOptionToMediaType(t *testing.T) {
 		t.Fatalf("Error parsing request: %v", err)
 	}
 
-	expected := "coapmsg.MediaType"
-	actualContentFormatType := fmt.Sprintf("%T", parsedMsg.Option(ContentFormat))
+	// NOTE: We do NOT treat content type special anymore. It's the user who must convert types
+	// We could offer utils for that.
+	//expected := "coapmsg.MediaType"
+	expected := "coapmsg.OptionValue"
+	actualContentFormatType := fmt.Sprintf("%T", parsedMsg.Options().Get(ContentFormat))
 	if expected != actualContentFormatType {
 		t.Fatalf("Expected %#v got %#v", expected, actualContentFormatType)
 	}
-	actualAcceptType := fmt.Sprintf("%T", parsedMsg.Option(Accept))
+	actualAcceptType := fmt.Sprintf("%T", parsedMsg.Options().Get(Accept))
 	if expected != actualAcceptType {
 		t.Fatalf("Expected %#v got %#v", expected, actualAcceptType)
 	}
@@ -784,22 +804,22 @@ func TestEncodeMessageWithAllOptions(t *testing.T) {
 		Payload:   []byte("PAYLOAD"),
 	}
 
-	req.AddOption(IfMatch, []byte("IFMATCH"))
-	req.AddOption(URIHost, "URIHOST")
-	req.AddOption(ETag, []byte("ETAG"))
-	req.AddOption(IfNoneMatch, []byte{})
-	req.AddOption(Observe, uint32(9999))
-	req.AddOption(URIPort, uint32(5683))
-	req.AddOption(LocationPath, "LOCATIONPATH")
-	req.AddOption(URIPath, "URIPATH")
-	req.AddOption(ContentFormat, TextPlain)
-	req.AddOption(MaxAge, uint32(9999))
-	req.AddOption(URIQuery, "URIQUERY")
-	req.AddOption(Accept, TextPlain)
-	req.AddOption(LocationQuery, "LOCATIONQUERY")
-	req.AddOption(ProxyURI, "PROXYURI")
-	req.AddOption(ProxyScheme, "PROXYSCHEME")
-	req.AddOption(Size1, uint32(9999))
+	req.Options().Add(IfMatch, []byte("IFMATCH"))
+	req.Options().Add(URIHost, "URIHOST")
+	req.Options().Add(ETag, []byte("ETAG"))
+	req.Options().Add(IfNoneMatch, []byte{})
+	req.Options().Add(Observe, uint32(9999))
+	req.Options().Add(URIPort, uint32(5683))
+	req.Options().Add(LocationPath, "LOCATIONPATH")
+	req.Options().Add(URIPath, "URIPATH")
+	req.Options().Add(ContentFormat, TextPlain)
+	req.Options().Add(MaxAge, uint32(9999))
+	req.Options().Add(URIQuery, "URIQUERY")
+	req.Options().Add(Accept, TextPlain)
+	req.Options().Add(LocationQuery, "LOCATIONQUERY")
+	req.Options().Add(ProxyURI, "PROXYURI")
+	req.Options().Add(ProxyScheme, "PROXYSCHEME")
+	req.Options().Add(Size1, uint32(9999))
 
 	data, err := req.MarshalBinary()
 	if err != nil {

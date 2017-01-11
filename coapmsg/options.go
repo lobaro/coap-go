@@ -6,7 +6,7 @@ import (
 )
 
 // OptionID identifies an option in a message.
-type OptionID uint16
+type OptionId uint16
 
 /*
    +-----+----+---+---+---+----------------+--------+--------+---------+
@@ -35,23 +35,37 @@ type OptionID uint16
 
 // Option IDs.
 const (
-	IfMatch       OptionID = 1
-	URIHost       OptionID = 3
-	ETag          OptionID = 4
-	IfNoneMatch   OptionID = 5
-	Observe       OptionID = 6
-	URIPort       OptionID = 7
-	LocationPath  OptionID = 8
-	URIPath       OptionID = 11
-	ContentFormat OptionID = 12
-	MaxAge        OptionID = 14
-	URIQuery      OptionID = 15
-	Accept        OptionID = 17
-	LocationQuery OptionID = 20
-	ProxyURI      OptionID = 35
-	ProxyScheme   OptionID = 39
-	Size1         OptionID = 60
+	IfMatch       OptionId = 1
+	URIHost       OptionId = 3
+	ETag          OptionId = 4
+	IfNoneMatch   OptionId = 5
+	Observe       OptionId = 6
+	URIPort       OptionId = 7
+	LocationPath  OptionId = 8
+	URIPath       OptionId = 11
+	ContentFormat OptionId = 12
+	MaxAge        OptionId = 14
+	URIQuery      OptionId = 15
+	Accept        OptionId = 17
+	LocationQuery OptionId = 20
+	ProxyURI      OptionId = 35
+	ProxyScheme   OptionId = 39
+	Size1         OptionId = 60
 )
+
+func (o OptionId) Critical() bool {
+	return uint16(o)&1 != 0
+}
+
+// "Unsafe to forward" proxies will not forward unsafe options
+func (o OptionId) UnSafe() bool {
+	return uint16(o)&uint16(2) != 0
+}
+
+// NoCacheKey only has a meaning for options that are Safe-to-Forward
+func (o OptionId) NoCacheKey() bool {
+	return bool((o & 0x1e) == 0x1c)
+}
 
 // MediaType specifies the content type of a message.
 type MediaType byte
@@ -89,7 +103,7 @@ type optionDef struct {
 	maxLen      int
 }
 
-var optionDefs = [256]optionDef{
+var optionDefs = map[OptionId]optionDef{
 	IfMatch:     {valueFormat: ValueOpaque, minLen: 0, maxLen: 8},
 	URIHost:     {valueFormat: ValueString, minLen: 1, maxLen: 255},
 	ETag:        {valueFormat: ValueOpaque, minLen: 1, maxLen: 8},
@@ -109,35 +123,25 @@ var optionDefs = [256]optionDef{
 	Size1:         {valueFormat: ValueUint, minLen: 0, maxLen: 4},
 }
 
-type options []option
+type optionsIds []OptionId
 
-func (o options) Len() int {
+// Len implements sort.Interface
+func (o optionsIds) Len() int {
 	return len(o)
 }
 
-func (o options) Less(i, j int) bool {
-	if o[i].ID == o[j].ID {
-		return i < j
-	}
-	return o[i].ID < o[j].ID
+// Less implements sort.Interface
+func (o optionsIds) Less(i, j int) bool {
+	return o[i] < o[j]
 }
 
-func (o options) Swap(i, j int) {
+// Swap implements sort.Interface
+func (o optionsIds) Swap(i, j int) {
 	o[i], o[j] = o[j], o[i]
 }
 
-func (o options) Remove(oid OptionID) options {
-	rv := options{}
-	for _, opt := range o {
-		if opt.ID != oid {
-			rv = append(rv, opt)
-		}
-	}
-	return rv
-}
-
 type option struct {
-	ID    OptionID
+	ID    OptionId
 	Value interface{}
 }
 
@@ -206,7 +210,7 @@ func optionValueToBytes(optVal interface{}) ([]byte, error) {
 	return encodeInt(v), nil
 }
 
-func parseOptionValue(optionID OptionID, valueBuf []byte) interface{} {
+func parseOptionValue(optionID OptionId, valueBuf []byte) interface{} {
 	// Custom option?
 	if int(optionID) > len(optionDefs) {
 		return valueBuf

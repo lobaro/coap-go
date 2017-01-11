@@ -84,8 +84,8 @@ func msgLogEntry(msg *coapmsg.Message) *logrus.Entry {
 	//bin, _ := msg.MarshalBinary()
 
 	options := logrus.Fields{}
-	for _, o := range msg.OptionsRaw() {
-		options["opt:"+strconv.Itoa(int(o.ID))] = o.ToBytes()
+	for id, o := range msg.Options() {
+		options["opt:"+strconv.Itoa(int(id))] = o
 	}
 
 	return log.WithField("Code", msg.Code.String()).
@@ -93,7 +93,7 @@ func msgLogEntry(msg *coapmsg.Message) *logrus.Entry {
 		WithField("Token", msg.Token).
 		WithField("MessageID", msg.MessageID).
 		//WithField("Payload", msg.Payload).
-		WithField("OptionCount", msg.OptionsRaw().Len()).
+		WithField("OptionCount", len(msg.Options())).
 		WithFields(options)
 	//WithField("Bin", bin)
 }
@@ -204,17 +204,11 @@ func waitForNotify(ia *Interaction, req *Request, currResponse *Response) {
 func buildResponse(req *Request, resMsg *coapmsg.Message) *Response {
 	nextCh := make(chan *Response, 0)
 
-	opts := coapmsg.CoapOptions{}
-	for _, o := range resMsg.OptionsRaw() {
-
-		opts.Add(o.ID, o.Value)
-	}
-
 	return &Response{
 		StatusCode: int(resMsg.Code),
 		Status:     fmt.Sprintf("%d.%02d %s", resMsg.Code.Class(), resMsg.Code.Detail(), resMsg.Code.String()),
 		Body:       ioutil.NopCloser(bytes.NewReader(resMsg.Payload)),
-		Options:    opts,
+		Options:    resMsg.Options(),
 		Request:    req,
 		next:       nextCh,
 	}
@@ -253,9 +247,10 @@ func (t *TransportUart) buildRequestMessage(req *Request) (*coapmsg.Message, err
 	msg.SetOptions(req.Options)
 	msg.SetPathString(req.URL.EscapedPath())
 
+	msg.Options().Del(coapmsg.URIQuery)
 	for _, q := range strings.Split(req.URL.RawQuery, "&") {
 		if q != "" {
-			msg.SetOption(coapmsg.URIQuery, q)
+			msg.Options().Add(coapmsg.URIQuery, q)
 		}
 	}
 

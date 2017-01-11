@@ -206,7 +206,7 @@ func toGoMessage(cMsg *C.CoAP_Message_t) coapmsg.Message {
 	binary.LittleEndian.PutUint64(msg.Token, uint64(cMsg.Token64))
 
 	for opt := cMsg.pOptionsList; opt != nil; opt = opt.next {
-		msg.AddOptionFromBytes(coapmsg.OptionID(opt.Number), C.GoBytes(unsafe.Pointer(opt.Value), C.int(opt.Length)))
+		msg.Options().Add(opt.Number, C.GoBytes(unsafe.Pointer(opt.Value), C.int(opt.Length)))
 	}
 	return msg
 }
