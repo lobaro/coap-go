@@ -1,6 +1,7 @@
 package coap
 
 import (
+	"github.com/Lobaro/coap-go/coapmsg"
 	"io"
 	"time"
 )
@@ -25,6 +26,8 @@ type Response struct {
 	// with a "chunked" Transfer-Encoding.
 	// See: RFC 7959 (Block-wise transfers in CoAP)
 	Body io.ReadCloser
+
+	Options coapmsg.CoapOptions
 
 	// Request is the request that was sent to obtain this Response.
 	// Request's Body is nil (having already been consumed).

@@ -30,6 +30,7 @@ type OptionID uint16
    |  39 | x  | x | - |   | Proxy-Scheme   | string | 1-255  | (none)  |
    |  60 |    |   | x |   | Size1          | uint   | 0-4    | (none)  |
    +-----+----+---+---+---+----------------+--------+--------+---------+
+   C=Critical, U=Unsafe, N=NoCacheKey, R=Repeatable
 */
 
 // Option IDs.
@@ -66,40 +67,46 @@ const (
 )
 
 // Option value format (RFC7252 section 3.2)
-type valueFormat uint8
+// Defines the option format inside the packet
+type ValueFormat uint8
 
 const (
-	valueUnknown valueFormat = iota
-	valueEmpty
-	valueOpaque
-	valueUint
-	valueString
+	ValueUnknown ValueFormat = iota
+	ValueEmpty               // A zero-length sequence of bytes.
+	ValueOpaque              // An opaque sequence of bytes.
+	// A non-negative integer that is represented in network byte
+	// order using the number of bytes given by the Option Length
+	// field.
+	ValueUint
+	// A Unicode string that is encoded using UTF-8 [RFC3629] in
+	// Net-Unicode form [RFC5198].
+	ValueString
 )
 
 type optionDef struct {
-	valueFormat valueFormat
+	valueFormat ValueFormat
 	minLen      int
 	maxLen      int
 }
 
 var optionDefs = [256]optionDef{
-	IfMatch:     {valueFormat: valueOpaque, minLen: 0, maxLen: 8},
-	URIHost:     {valueFormat: valueString, minLen: 1, maxLen: 255},
-	ETag:        {valueFormat: valueOpaque, minLen: 1, maxLen: 8},
-	IfNoneMatch: {valueFormat: valueEmpty, minLen: 0, maxLen: 0},
+	IfMatch:     {valueFormat: ValueOpaque, minLen: 0, maxLen: 8},
+	URIHost:     {valueFormat: ValueString, minLen: 1, maxLen: 255},
+	ETag:        {valueFormat: ValueOpaque, minLen: 1, maxLen: 8},
+	IfNoneMatch: {valueFormat: ValueEmpty, minLen: 0, maxLen: 0},
 	// Observe a resource for up to 256 Seconds
-	Observe:       {valueFormat: valueUint, minLen: 0, maxLen: 3}, // Client: 0 = register, 1 = unregister; Server: Seq. number
-	URIPort:       {valueFormat: valueUint, minLen: 0, maxLen: 2},
-	LocationPath:  {valueFormat: valueString, minLen: 0, maxLen: 255},
-	URIPath:       {valueFormat: valueString, minLen: 0, maxLen: 255},
-	ContentFormat: {valueFormat: valueUint, minLen: 0, maxLen: 2},
-	MaxAge:        {valueFormat: valueUint, minLen: 0, maxLen: 4},
-	URIQuery:      {valueFormat: valueString, minLen: 0, maxLen: 255},
-	Accept:        {valueFormat: valueUint, minLen: 0, maxLen: 2},
-	LocationQuery: {valueFormat: valueString, minLen: 0, maxLen: 255},
-	ProxyURI:      {valueFormat: valueString, minLen: 1, maxLen: 1034},
-	ProxyScheme:   {valueFormat: valueString, minLen: 1, maxLen: 255},
-	Size1:         {valueFormat: valueUint, minLen: 0, maxLen: 4},
+	Observe:       {valueFormat: ValueUint, minLen: 0, maxLen: 3}, // Client: 0 = register, 1 = unregister; Server: Seq. number
+	URIPort:       {valueFormat: ValueUint, minLen: 0, maxLen: 2},
+	LocationPath:  {valueFormat: ValueString, minLen: 0, maxLen: 255},
+	URIPath:       {valueFormat: ValueString, minLen: 0, maxLen: 255},
+	ContentFormat: {valueFormat: ValueUint, minLen: 0, maxLen: 2},
+	MaxAge:        {valueFormat: ValueUint, minLen: 0, maxLen: 4},
+	URIQuery:      {valueFormat: ValueString, minLen: 0, maxLen: 255},
+	Accept:        {valueFormat: ValueUint, minLen: 0, maxLen: 2},
+	LocationQuery: {valueFormat: ValueString, minLen: 0, maxLen: 255},
+	ProxyURI:      {valueFormat: ValueString, minLen: 1, maxLen: 1034},
+	ProxyScheme:   {valueFormat: ValueString, minLen: 1, maxLen: 255},
+	Size1:         {valueFormat: ValueUint, minLen: 0, maxLen: 4},
 }
 
 type options []option
@@ -164,7 +171,7 @@ func decodeInt(b []byte) uint32 {
 func (o option) ToBytes() []byte {
 	v, err := optionValueToBytes(o.Value)
 	if err != nil {
-		panic(fmt.Errorf("Failed to marshal option %x: %s", o.ID, err))
+		panic(fmt.Errorf("Failed to marshal option %d: %s", o.ID, err))
 	}
 
 	return v
@@ -207,7 +214,7 @@ func parseOptionValue(optionID OptionID, valueBuf []byte) interface{} {
 
 	def := optionDefs[optionID]
 
-	if def.valueFormat == valueUnknown {
+	if def.valueFormat == ValueUnknown {
 		// Skip unrecognized options (RFC7252 section 5.4.1)
 		return nil
 	}
@@ -216,16 +223,16 @@ func parseOptionValue(optionID OptionID, valueBuf []byte) interface{} {
 		return nil
 	}
 	switch def.valueFormat {
-	case valueUint:
+	case ValueUint:
 		intValue := decodeInt(valueBuf)
 		if optionID == ContentFormat || optionID == Accept {
 			return MediaType(intValue)
 		} else {
 			return intValue
 		}
-	case valueString:
+	case ValueString:
 		return string(valueBuf)
-	case valueOpaque, valueEmpty:
+	case ValueOpaque, ValueEmpty:
 		return valueBuf
 	}
 	// Skip unrecognized options (should never be reached)

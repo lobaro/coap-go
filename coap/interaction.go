@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"github.com/Lobaro/coap-go/coapmsg"
-	"time"
+	"github.com/Sirupsen/logrus"
 )
 
 type Token []byte
@@ -94,7 +95,7 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 			//    |                  |
 			//
 			// Figure 5: A GET Request with a Separate Response
-			withTimeout, _ := context.WithTimeout(ctx, 10*time.Second)
+			withTimeout, _ := context.WithTimeout(ctx, POSTPONED_RESPONSE_TIMEOUT)
 			resMsg, err = ia.readMessage(withTimeout)
 			if err != nil {
 				return nil, wrapError(err, "Failed to read postponed response")
@@ -142,7 +143,10 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 
 	// Handle observe
 	ia.NotificationCh = make(chan *coapmsg.Message, 0)
-	if reqMsg.Option(coapmsg.Observe) == 0 && resMsg.Option(coapmsg.Observe) != nil {
+
+	// TODO: uint32(0) is ugly, replace options in message by CoapOptions
+	if reqMsg.Option(coapmsg.Observe) == uint32(0) && resMsg.Option(coapmsg.Observe) != nil {
+
 		go ia.waitForNotify(ctx)
 	} else {
 		close(ia.NotificationCh)

@@ -282,9 +282,8 @@ func (m *Message) SetOptions(opts CoapOptions) {
 	m.opts = make(options, 0)
 
 	for id, o := range opts {
-		// TODO: Is this correct? To we have o unpack o?
 		for _, v := range o {
-			m.opts = append(m.opts, option{ID: id, Value: v})
+			m.opts = append(m.opts, option{ID: id, Value: parseOptionValue(id, v.AsBytes())})
 		}
 	}
 }

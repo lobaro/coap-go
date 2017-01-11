@@ -114,7 +114,7 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 		req.Token = t.nextToken()
 	}
 
-	reqMsg, err := t.buildReqMessage(req)
+	reqMsg, err := t.buildRequestMessage(req)
 	if err != nil {
 		return
 	}
@@ -203,10 +203,18 @@ func waitForNotify(ia *Interaction, req *Request, currResponse *Response) {
 
 func buildResponse(req *Request, resMsg *coapmsg.Message) *Response {
 	nextCh := make(chan *Response, 0)
+
+	opts := coapmsg.CoapOptions{}
+	for _, o := range resMsg.OptionsRaw() {
+
+		opts.Add(o.ID, o.Value)
+	}
+
 	return &Response{
 		StatusCode: int(resMsg.Code),
 		Status:     fmt.Sprintf("%d.%02d %s", resMsg.Code.Class(), resMsg.Code.Detail(), resMsg.Code.String()),
 		Body:       ioutil.NopCloser(bytes.NewReader(resMsg.Payload)),
+		Options:    opts,
 		Request:    req,
 		next:       nextCh,
 	}
@@ -225,7 +233,7 @@ func (t *TransportUart) newSerialConfig() *serial.Config {
 
 // BuildMessage creates a coap message based on the request
 // Takes care of closing the request body
-func (t *TransportUart) buildReqMessage(req *Request) (*coapmsg.Message, error) {
+func (t *TransportUart) buildRequestMessage(req *Request) (*coapmsg.Message, error) {
 	defer req.Body.Close()
 	if !ValidMethod(req.Method) {
 		return nil, errors.New(fmt.Sprint("coap: Invalid method: ", req.Method))

@@ -84,7 +84,8 @@ type Client struct {
 	mu                  sync.Mutex
 }
 
-const NSTART = 5 // Default in CoAP Spec is 1. But we do support more.
+const NSTART = 5                                    // Default in CoAP Spec is 1. But we do support more.
+const POSTPONED_RESPONSE_TIMEOUT = 30 * time.Second // How long to wait for a CON after we got an non-piigyback ACK
 
 var log logrus.FieldLogger = logrus.StandardLogger()
 
@@ -184,7 +185,7 @@ func (c *Client) Post(url string, bodyType uint16, body io.Reader) (*Response, e
 	if err != nil {
 		return nil, err
 	}
-	req.Options.Set(coapmsg.ContentFormat, coapmsg.OptionValue(bodyType))
+	req.Options.Set(coapmsg.ContentFormat, bodyType)
 	return c.Do(req)
 }
 
