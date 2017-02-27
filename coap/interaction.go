@@ -33,7 +33,7 @@ func (ia *Interaction) HandleMessage(msg *coapmsg.Message) {
 
 }
 
-var READ_MESSAGE_CTX_DONE = errors.New("Request context done during interaction.readMessage")
+var READ_MESSAGE_CTX_DONE = errors.New("Read timeout")
 
 func (ia *Interaction) readMessage(ctx context.Context) (*coapmsg.Message, error) {
 	select {
@@ -43,6 +43,8 @@ func (ia *Interaction) readMessage(ctx context.Context) (*coapmsg.Message, error
 		return nil, READ_MESSAGE_CTX_DONE
 	}
 }
+
+var ERROR_READ_ACK = "Failed to read ACK"
 
 func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (resMsg *coapmsg.Message, err error) {
 	ia.MessageId = MessageId(reqMsg.MessageID)
@@ -57,10 +59,10 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 		withAckTimeout, _ := context.WithTimeout(ctx, ackTimeout())
 		resMsg, err = ia.readMessage(withAckTimeout)
 		if err != nil {
-			return nil, wrapError(err, "Failed to read ACK")
+			return nil, wrapError(err, ERROR_READ_ACK)
 		}
 		if err = validateMessageId(reqMsg, resMsg); err != nil {
-			return nil, wrapError(err, "Failed to read ACK")
+			return nil, wrapError(err, ERROR_READ_ACK)
 		}
 		if resMsg.Type != coapmsg.Acknowledgement {
 			return nil, errors.New("Expected ACK response but got " + reqMsg.Type.String())
