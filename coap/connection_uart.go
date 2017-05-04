@@ -15,8 +15,8 @@ import (
 type serialConnection struct {
 	config       *serial.Config
 	deadline     time.Time
-	reader       *slip.SlipReader
-	writer       *slip.SlipWriter
+	reader       *slip.Reader
+	writer       *slip.Writer
 	closed       bool
 	interactions Interactions
 

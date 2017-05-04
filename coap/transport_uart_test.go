@@ -1,14 +1,12 @@
 package coap
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/url"
 	"testing"
 	"time"
-
-	"io"
-
-	"bytes"
 
 	"github.com/Lobaro/coap-go/coapmsg"
 )
@@ -64,24 +62,24 @@ func ValidateRemainingBytes(t *testing.T, conn *TestConnector) {
 	var writtenBytes = make([]byte, 500)
 	n, err := conn.SendBuf.Read(writtenBytes)
 
-	t.Logf("Unhandled Transport SendBuf %d bytes: %v", n, writtenBytes[0:n])
 	if err != nil && err != io.EOF {
 		t.Error(err)
 	}
 
 	if n > 0 {
+		t.Logf("Unhandled Transport SendBuf %d bytes: %v", n, writtenBytes[0:n])
 		t.Error("SendBuf is not empty - handle all bytes in test")
 	}
 
 	var readBytes = make([]byte, 500)
 	n, err = conn.ReceiveBuf.Read(readBytes)
 
-	t.Logf("Unhandled Transport ReceiveBuf %d bytes: %v", n, readBytes[0:n])
 	if err != nil && err != io.EOF {
 		t.Error(err)
 	}
 
 	if n > 0 {
+		t.Logf("Unhandled Transport ReceiveBuf %d bytes: %v", n, readBytes[0:n])
 		t.Error("ReceiveBuf is not empty - handle all bytes in test")
 	}
 }

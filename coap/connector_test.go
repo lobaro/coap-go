@@ -62,8 +62,6 @@ func (c *TestConnector) WaitForSendMessage() (coapmsg.Message, error) {
 }
 
 func (c *TestConnector) GetSendMessage() (coapmsg.Message, error) {
-	c.conn.writeMu.Lock()
-	defer c.conn.writeMu.Unlock()
 	w := slip.NewReader(c.SendBuf)
 
 	p, _, err := w.ReadPacket()
@@ -74,8 +72,6 @@ func (c *TestConnector) GetSendMessage() (coapmsg.Message, error) {
 }
 
 func (c *TestConnector) GetSendData() ([]byte, error) {
-	c.conn.writeMu.Lock()
-	defer c.conn.writeMu.Unlock()
 	w := slip.NewReader(c.SendBuf)
 
 	p, _, err := w.ReadPacket()
