@@ -151,7 +151,8 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 
 	res = buildResponse(req, resMsg)
 
-	go waitForNotify(ia, req, res)
+	// TODO: We call ia.waitForNotify during RoundTrip already - is this needed here?
+	//go waitForNotify(ia, req, res)
 
 	return res, nil
 }

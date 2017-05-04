@@ -3,12 +3,12 @@ package coap
 import (
 	"bytes"
 	"context"
-	"io"
 	"net/url"
 	"testing"
 	"time"
 
 	"github.com/Lobaro/coap-go/coapmsg"
+	"github.com/Sirupsen/logrus"
 )
 
 func TestTransportFail(t *testing.T) {
@@ -60,11 +60,13 @@ func TestUrl(t *testing.T) {
 // A test should not leave any bytes on the wire uninterpreted
 func ValidateRemainingBytes(t *testing.T, conn *TestConnector) {
 	var writtenBytes = make([]byte, 500)
-	n, err := conn.SendBuf.Read(writtenBytes)
+	//n, err := conn.SendBuf.Read(writtenBytes)
+	n := conn.Out.Len()
 
-	if err != nil && err != io.EOF {
-		t.Error(err)
-	}
+	/*
+		if err != nil && err != io.EOF {
+			t.Error(err)
+		}*/
 
 	if n > 0 {
 		t.Logf("Unhandled Transport SendBuf %d bytes: %v", n, writtenBytes[0:n])
@@ -72,11 +74,13 @@ func ValidateRemainingBytes(t *testing.T, conn *TestConnector) {
 	}
 
 	var readBytes = make([]byte, 500)
-	n, err = conn.ReceiveBuf.Read(readBytes)
+	//n, err = conn.ReceiveBuf.Read(readBytes)
+	n = conn.In.Len()
 
-	if err != nil && err != io.EOF {
-		t.Error(err)
-	}
+	/*
+		if err != nil && err != io.EOF {
+			t.Error(err)
+		}*/
 
 	if n > 0 {
 		t.Logf("Unhandled Transport ReceiveBuf %d bytes: %v", n, readBytes[0:n])
@@ -100,7 +104,7 @@ func TestRequestResponsePiggyback(t *testing.T) {
 	// Deliver expected network traffic async.
 	go func() {
 		// Check outgoing message
-		msg, err := testCon.WaitForSendMessage()
+		msg, err := testCon.WaitForSendMessage(1 * time.Second)
 		if err != nil {
 			t.Error(err)
 		}
@@ -140,6 +144,22 @@ func TestRequestResponsePiggyback(t *testing.T) {
 	ValidateRemainingBytes(t, testCon)
 }
 
+// This sometime fails.
+func TestMany(t *testing.T) {
+	/*for i := 0; i < 10; i++ {
+		go func() {
+			TestRequestResponsePostponed(t)
+		}()
+	}*/
+
+	for i := 0; i < 15; i++ {
+		TestRequestResponsePostponed(t)
+		t.Logf("Done test run #%d", i)
+	}
+
+	//time.Sleep(5 * time.Second)
+}
+
 func TestRequestResponsePostponed(t *testing.T) {
 	trans := NewTransportUart()
 	testCon := NewTestConnector()
@@ -157,9 +177,11 @@ func TestRequestResponsePostponed(t *testing.T) {
 	asyncDoneChan := make(chan bool)
 	go func() {
 		// Check outgoing message
-		msg, err := testCon.WaitForSendMessage()
+		msg, err := testCon.WaitForSendMessage(3 * time.Second)
 		if err != nil {
 			t.Error(err)
+			asyncDoneChan <- true
+			return
 		}
 		if msg.PathString() != "foo" {
 			t.Errorf("Expected empty PathString but was %s", msg.PathString())
@@ -168,22 +190,27 @@ func TestRequestResponsePostponed(t *testing.T) {
 		// Send ack
 		ack := coapmsg.NewAck(msg.MessageID)
 		ack.Code = coapmsg.Empty // For postponed response.
+		logrus.Info("Fake Receive ACK")
 		testCon.FakeReceiveMessage(ack)
 
 		// let some time pass and send response
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 		res := coapmsg.NewMessage()
 		res.Type = coapmsg.Confirmable
 		res.MessageID = msg.MessageID
 		res.Token = msg.Token
 		res.Code = coapmsg.Content
 		res.Payload = []byte("test")
+		logrus.Info("Fake Receive CON")
 		testCon.FakeReceiveMessage(res)
 
 		// Expect an acknowledgment for our CON
-		msg, err = testCon.WaitForSendMessage()
+		msg, err = testCon.WaitForSendMessage(3 * time.Second)
+
 		if err != nil {
 			t.Error(err)
+			asyncDoneChan <- true
+			return
 		}
 		if msg.Type != coapmsg.Acknowledgement {
 			t.Errorf("Expected Acknowledgement but got %s", msg.Type.String())
@@ -194,7 +221,7 @@ func TestRequestResponsePostponed(t *testing.T) {
 	}()
 
 	// Shorter timeout
-	ctxWithTimeout, _ := context.WithTimeout(req.Context(), 2*time.Second)
+	ctxWithTimeout, _ := context.WithTimeout(req.Context(), 10*time.Second)
 	req = req.WithContext(ctxWithTimeout)
 	res, err := trans.RoundTrip(req)
 
@@ -214,12 +241,11 @@ func TestRequestResponsePostponed(t *testing.T) {
 		}
 	}
 
-	ValidateRemainingBytes(t, testCon)
-
 	select {
 	case <-asyncDoneChan:
 		t.Log("Test Done.")
-	case <-time.After(3 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Error("Test Failed: Timeout")
 	}
+	ValidateRemainingBytes(t, testCon)
 }

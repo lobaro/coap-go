@@ -3,12 +3,13 @@ package coap
 import (
 	"errors"
 	"fmt"
-	"github.com/Lobaro/coap-go/coapmsg"
-	"github.com/Sirupsen/logrus"
 	"io"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/Lobaro/coap-go/coapmsg"
+	"github.com/Sirupsen/logrus"
 )
 
 // RoundTripper is an interface representing the ability to execute a
@@ -17,12 +18,12 @@ import (
 // A RoundTripper must be safe for concurrent use by multiple
 // goroutines.
 type RoundTripper interface {
-	// RoundTrip executes a single HTTP transaction, returning
+	// RoundTrip executes a single CoAP transaction, returning
 	// a Response for the provided Request.
 	//
 	// RoundTrip should not attempt to interpret the response. In
 	// particular, RoundTrip must return err == nil if it obtained
-	// a response, regardless of the response's HTTP status code.
+	// a response, regardless of the response's CoAP status code.
 	// A non-nil err should be reserved for failure to obtain a
 	// response. Similarly, RoundTrip should not attempt to
 	// handle higher-level protocol details such as redirects,

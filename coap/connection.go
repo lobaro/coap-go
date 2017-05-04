@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/Lobaro/coap-go/coapmsg"
+	"time"
 )
 
 // Connection represents an interface to identify
@@ -56,25 +57,10 @@ func sendMessage(conn Connection, msg *coapmsg.Message) error {
 }
 
 func readMessage(ctx context.Context, conn Connection) (*coapmsg.Message, error) {
-	packetCh := make(chan []byte)
-	errorCh := make(chan error)
-	var packet []byte
-	go func() {
-		packet, err := readPacket(conn)
-		if err != nil {
-			errorCh <- err
-		} else {
-			packetCh <- packet
-		}
-	}()
+	packet, err := readPacket(ctx, conn)
 
-	select {
-	case err := <-errorCh:
+	if err != nil {
 		return nil, err
-	case packet = <-packetCh:
-		break
-	case <-ctx.Done():
-		return nil, ctx.Err()
 	}
 
 	msg, err := coapmsg.ParseMessage(packet)
@@ -86,7 +72,7 @@ func readMessage(ctx context.Context, conn Connection) (*coapmsg.Message, error)
 	return &msg, nil
 }
 
-func readPacket(reader PacketReader) ([]byte, error) {
+func readPacket(ctx context.Context, reader PacketReader) ([]byte, error) {
 	buf := &bytes.Buffer{}
 
 	var isPrefix bool
@@ -103,6 +89,14 @@ func readPacket(reader PacketReader) ([]byte, error) {
 		if !isPrefix {
 			break
 		}
+
+		select {
+		case <-ctx.Done():
+			return nil, errors.New("coap: Timeout while readPacket")
+		default:
+		}
+
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	if isPrefix {

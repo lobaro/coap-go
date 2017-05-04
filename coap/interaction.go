@@ -29,9 +29,7 @@ type Interaction struct {
 type Interactions []*Interaction
 
 func (ia *Interaction) HandleMessage(msg *coapmsg.Message) {
-	// CON messages are already acknowledged by the connection (is that a good idea?)
 	ia.receiveCh <- msg
-
 }
 
 var READ_MESSAGE_CTX_DONE = errors.New("Read timeout")

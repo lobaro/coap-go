@@ -8,15 +8,14 @@ import (
 	"time"
 
 	"github.com/Lobaro/coap-go/coapmsg"
-	"github.com/Lobaro/slip"
 	"github.com/tarm/serial"
 )
 
 type serialConnection struct {
 	config       *serial.Config
 	deadline     time.Time
-	reader       *slip.Reader
-	writer       *slip.Writer
+	reader       PacketReader
+	writer       PacketWriter
 	closed       bool
 	interactions Interactions
 
@@ -191,15 +190,6 @@ func (c *serialConnection) startReceiveLoop(ctx context.Context) {
 				log.WithError(err).Warn("Failed to send RST")
 			}
 		} else {
-			// ACK must be handled by interaction!
-			// Only ACK con messages
-			// if msg.Type == coapmsg.Confirmable {
-			// 	ack := coapmsg.NewAck(msg.MessageID)
-			// 	if err := sendMessage(c, &ack); err != nil {
-			// 		logrus.WithError(err).Warn("Failed to send ACK")
-			// 	}
-			// }
-
 			ia.HandleMessage(msg)
 		}
 
