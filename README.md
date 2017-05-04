@@ -26,17 +26,17 @@ When you have a 32 bit C compiler make sure you also use 32 bit Go. Else cgo wil
 ### Install the code
 
 ```
-go get -u github.com/lobaro/lobaro-coap/coap
+go get -u github.com/lobaro/coap-go
 ```
 
 Execute tests
 ```
-go test github.com/lobaro/lobaro-coap
+go test github.com/lobaro/coap-go
 ```
 
 To use the library in your project, just import
 ```
-import "github.com/lobaro/lobaro-coap/coap"
+import "github.com/lobaro/coap-go"
 ```
 
 # Usage
