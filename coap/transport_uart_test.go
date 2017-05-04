@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"sync"
+
 	"github.com/Lobaro/coap-go/coapmsg"
 	"github.com/Sirupsen/logrus"
 )
@@ -102,9 +104,10 @@ func TestRequestResponsePiggyback(t *testing.T) {
 	}
 
 	// Deliver expected network traffic async.
+	asyncDoneChan := make(chan bool)
 	go func() {
 		// Check outgoing message
-		msg, err := testCon.WaitForSendMessage(1 * time.Second)
+		msg, err := testCon.WaitForSendMessage(3 * time.Second)
 		if err != nil {
 			t.Error(err)
 		}
@@ -118,6 +121,7 @@ func TestRequestResponsePiggyback(t *testing.T) {
 		ack.Token = msg.Token
 		ack.Payload = []byte("test")
 		testCon.FakeReceiveMessage(ack)
+		asyncDoneChan <- true
 	}()
 
 	// Shorter timeout
@@ -141,31 +145,64 @@ func TestRequestResponsePiggyback(t *testing.T) {
 		}
 	}
 
+	select {
+	case <-asyncDoneChan:
+		t.Log("Test Done.")
+	case <-time.After(10 * time.Second):
+		t.Error("Test Failed: Timeout")
+	}
 	ValidateRemainingBytes(t, testCon)
 }
 
-// This sometime fails.
+// Ensures everything runs in parallel
+// In future we might test this with a single underlying Transport
 func TestMany(t *testing.T) {
-	/*for i := 0; i < 10; i++ {
+	var wg sync.WaitGroup
+	n := 50
+	wg.Add(n)
+	for i := 0; i < n; i++ {
 		go func() {
 			TestRequestResponsePostponed(t)
+			TestRequestResponsePiggyback(t)
+			wg.Done()
 		}()
-	}*/
-
-	for i := 0; i < 15; i++ {
-		TestRequestResponsePostponed(t)
-		t.Logf("Done test run #%d", i)
 	}
 
-	//time.Sleep(5 * time.Second)
+	wg.Wait()
+}
+
+// Fails yet
+func _TestManyParallel(t *testing.T) {
+	var wg sync.WaitGroup
+	n := 2
+	wg.Add(n)
+
+	trans := NewTransportUart()
+	testCon := NewTestConnector()
+	trans.Connecter = testCon
+	testCon.Connect("ignored")
+
+	for i := 0; i < n; i++ {
+		go func() {
+			RunRequestResponsePostponed(t, trans)
+			//TestRequestResponsePiggyback(t)
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
 }
 
 func TestRequestResponsePostponed(t *testing.T) {
 	trans := NewTransportUart()
 	testCon := NewTestConnector()
 	trans.Connecter = testCon
-
 	testCon.Connect("ignored")
+	RunRequestResponsePostponed(t, trans)
+}
+
+func RunRequestResponsePostponed(t *testing.T, trans *TransportUart) {
+	testCon := trans.Connecter.(*TestConnector)
 
 	req, err := NewRequest("GET", "coap+uart://any/foo", nil)
 
