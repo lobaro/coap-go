@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Lobaro/coap-go/coapmsg"
-	"github.com/Lobaro/slip"
-	"github.com/Sirupsen/logrus"
-	"github.com/tarm/serial"
 	"sync"
 	"time"
+
+	"github.com/Lobaro/coap-go/coapmsg"
+	"github.com/Lobaro/slip"
+	"github.com/tarm/serial"
 )
 
 type serialConnection struct {
@@ -23,8 +23,16 @@ type serialConnection struct {
 	// Use reader and writer to interact with the port
 	port *serial.Port
 
-	readMu  sync.Mutex
-	writeMu sync.Mutex
+	readMu  sync.Mutex // Guards the reader
+	writeMu sync.Mutex // Guards the writer
+}
+
+func (c *serialConnection) Open() error {
+	// TODO: not sure what happens when we reopen a closed connection
+	c.closed = false
+	go c.closeAfterDeadline()
+	go c.startReceiveLoop(context.Background())
+	return nil
 }
 
 func (c *serialConnection) ReadPacket() (p []byte, isPrefix bool, err error) {
@@ -160,19 +168,19 @@ func openComPort(serialCfg *serial.Config) (port *serial.Port, err error) {
 	return
 }
 
-func (c *serialConnection) StartReceiveLoop(ctx context.Context) {
+func (c *serialConnection) startReceiveLoop(ctx context.Context) {
 	for {
 		msg, err := readMessage(ctx, c)
 
 		if err != nil {
-			logrus.WithError(err).Error("Failed to receive message - closing connection")
+			log.WithError(err).Error("Failed to receive message - closing connection")
 			c.Close()
 			return
 		}
 
 		ia, err := c.FindInteraction(Token(msg.Token), MessageId(msg.MessageID))
 		if err != nil {
-			logrus.WithError(err).
+			log.WithError(err).
 				WithField("token", msg.Token).
 				WithField("messageId", msg.MessageID).
 				Warn("Failed to find interaction, send RST and drop packet")
@@ -180,7 +188,7 @@ func (c *serialConnection) StartReceiveLoop(ctx context.Context) {
 			// Even non-confirmable messages can be answered with a RST
 			rst := coapmsg.NewRst(msg.MessageID)
 			if err := sendMessage(c, &rst); err != nil {
-				logrus.WithError(err).Warn("Failed to send RST")
+				log.WithError(err).Warn("Failed to send RST")
 			}
 		} else {
 			// ACK must be handled by interaction!

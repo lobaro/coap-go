@@ -1,8 +1,16 @@
 package coap
 
 import (
+	"context"
 	"net/url"
 	"testing"
+	"time"
+
+	"io"
+
+	"bytes"
+
+	"github.com/Lobaro/coap-go/coapmsg"
 )
 
 func TestTransportFail(t *testing.T) {
@@ -49,4 +57,171 @@ func TestUrl(t *testing.T) {
 		t.Error("Expected Host to be", expectedHost, "but was", uri.Host)
 	}
 
+}
+
+// A test should not leave any bytes on the wire uninterpreted
+func ValidateRemainingBytes(t *testing.T, conn *TestConnector) {
+	var writtenBytes = make([]byte, 500)
+	n, err := conn.SendBuf.Read(writtenBytes)
+
+	t.Logf("Unhandled Transport SendBuf %d bytes: %v", n, writtenBytes[0:n])
+	if err != nil && err != io.EOF {
+		t.Error(err)
+	}
+
+	if n > 0 {
+		t.Error("SendBuf is not empty - handle all bytes in test")
+	}
+
+	var readBytes = make([]byte, 500)
+	n, err = conn.ReceiveBuf.Read(readBytes)
+
+	t.Logf("Unhandled Transport ReceiveBuf %d bytes: %v", n, readBytes[0:n])
+	if err != nil && err != io.EOF {
+		t.Error(err)
+	}
+
+	if n > 0 {
+		t.Error("ReceiveBuf is not empty - handle all bytes in test")
+	}
+}
+
+func TestRequestResponsePiggyback(t *testing.T) {
+	trans := NewTransportUart()
+	testCon := NewTestConnector()
+	trans.Connecter = testCon
+
+	testCon.Connect("ignored")
+
+	req, err := NewRequest("GET", "coap+uart://any/foo", nil)
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Deliver expected network traffic async.
+	go func() {
+		// Check outgoing message
+		msg, err := testCon.WaitForSendMessage()
+		if err != nil {
+			t.Error(err)
+		}
+		if msg.PathString() != "foo" {
+			t.Errorf("Expected empty PathString but was %s", msg.PathString())
+		}
+
+		// Send ack
+		ack := coapmsg.NewAck(msg.MessageID)
+		ack.Code = coapmsg.Content // For piggyback response. Default Empty would be postponed
+		ack.Token = msg.Token
+		ack.Payload = []byte("test")
+		testCon.FakeReceiveMessage(ack)
+	}()
+
+	// Shorter timeout
+	ctxWithTimeout, _ := context.WithTimeout(req.Context(), time.Second)
+	req = req.WithContext(ctxWithTimeout)
+	res, err := trans.RoundTrip(req)
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	if res != nil {
+		body := bytes.Buffer{}
+		body.ReadFrom(res.Body)
+		t.Logf("Response: [%s] %s", coapmsg.COAPCode(res.StatusCode).String(), body.String())
+		if body.String() != "test" {
+			t.Error("Expected response payload 'test' but got " + body.String())
+		}
+		if res.StatusCode != coapmsg.Content.Number() {
+			t.Errorf("Expected response code %d got %d", coapmsg.Content.Number(), res.StatusCode)
+		}
+	}
+
+	ValidateRemainingBytes(t, testCon)
+}
+
+func TestRequestResponsePostponed(t *testing.T) {
+	trans := NewTransportUart()
+	testCon := NewTestConnector()
+	trans.Connecter = testCon
+
+	testCon.Connect("ignored")
+
+	req, err := NewRequest("GET", "coap+uart://any/foo", nil)
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Deliver expected network traffic async.
+	asyncDoneChan := make(chan bool)
+	go func() {
+		// Check outgoing message
+		msg, err := testCon.WaitForSendMessage()
+		if err != nil {
+			t.Error(err)
+		}
+		if msg.PathString() != "foo" {
+			t.Errorf("Expected empty PathString but was %s", msg.PathString())
+		}
+
+		// Send ack
+		ack := coapmsg.NewAck(msg.MessageID)
+		ack.Code = coapmsg.Empty // For postponed response.
+		testCon.FakeReceiveMessage(ack)
+
+		// let some time pass and send response
+		time.Sleep(500 * time.Millisecond)
+		res := coapmsg.NewMessage()
+		res.Type = coapmsg.Confirmable
+		res.MessageID = msg.MessageID
+		res.Token = msg.Token
+		res.Code = coapmsg.Content
+		res.Payload = []byte("test")
+		testCon.FakeReceiveMessage(res)
+
+		// Expect an acknowledgment for our CON
+		msg, err = testCon.WaitForSendMessage()
+		if err != nil {
+			t.Error(err)
+		}
+		if msg.Type != coapmsg.Acknowledgement {
+			t.Errorf("Expected Acknowledgement but got %s", msg.Type.String())
+		}
+
+		asyncDoneChan <- true
+
+	}()
+
+	// Shorter timeout
+	ctxWithTimeout, _ := context.WithTimeout(req.Context(), 2*time.Second)
+	req = req.WithContext(ctxWithTimeout)
+	res, err := trans.RoundTrip(req)
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	if res != nil {
+		body := bytes.Buffer{}
+		body.ReadFrom(res.Body)
+		t.Logf("Response: [%s] %s", coapmsg.COAPCode(res.StatusCode).String(), body.String())
+		if body.String() != "test" {
+			t.Error("Expected response payload 'test' but got " + body.String())
+		}
+		if res.StatusCode != coapmsg.Content.Number() {
+			t.Errorf("Expected response code %d got %d", coapmsg.Content.Number(), res.StatusCode)
+		}
+	}
+
+	ValidateRemainingBytes(t, testCon)
+
+	select {
+	case <-asyncDoneChan:
+		t.Log("Test Done.")
+	case <-time.After(3 * time.Second):
+		t.Error("Test Failed: Timeout")
+	}
 }

@@ -131,6 +131,10 @@ func (c COAPCode) Detail() uint8 {
 	return uint8(c) & (0xFF >> 3)
 }
 
+func (c COAPCode) Number() uint8 {
+	return uint8(c)
+}
+
 func (c COAPCode) IsSuccess() bool {
 	return c.Class() == 2
 }
@@ -217,9 +221,12 @@ func (m Message) PathString() string {
 
 // SetPathString sets a path by a / separated string.
 func (m *Message) SetPathString(s string) {
-	for s[0] == '/' {
-		s = s[1:]
+	if len(s) == 0 {
+		m.SetPath(make([]string, 0))
+		return
 	}
+
+	s = strings.TrimLeft(s, "/")
 	m.SetPath(strings.Split(s, "/"))
 }
 
@@ -240,7 +247,7 @@ const (
 )
 
 // MarshalBinary produces the binary form of this Message.
-func (m *Message) MarshalBinary() ([]byte, error) {
+func (m *Message) MarshalBinary() []byte {
 	tmpbuf := []byte{0, 0}
 	binary.BigEndian.PutUint16(tmpbuf, m.MessageID)
 
@@ -352,7 +359,7 @@ func (m *Message) MarshalBinary() ([]byte, error) {
 
 	buf.Write(m.Payload)
 
-	return buf.Bytes(), nil
+	return buf.Bytes()
 }
 
 func ParseMessage(data []byte) (Message, error) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+
 	"github.com/Lobaro/coap-go/coapmsg"
 )
 
@@ -102,8 +103,9 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 			}
 			// The messageId from resMsg needs to be confirmed
 			if resMsg.Type != coapmsg.Confirmable && resMsg.Type != coapmsg.NonConfirmable {
-				return nil, errors.New("Expected postponed response but got " + reqMsg.Type.String())
+				return nil, errors.New("Expected postponed response [CON or NON] but got " + resMsg.Type.String())
 			}
+			// TODO: Handle resMsg.Type != coapmsg.Reset - but how?
 
 			// TODO: Send outgoing ACKs on connection level?
 			if resMsg.Type == coapmsg.Confirmable {

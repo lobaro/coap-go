@@ -11,7 +11,7 @@ const OBSERVE_TIMEOUT = 256 * time.Second
 
 type Response struct {
 	Status     string // e.g. "2.05 Content"
-	StatusCode int    // e.g. 69 - which is the int representation of 2.05
+	StatusCode uint8  // e.g. 69 - which is the int representation of 2.05
 
 	// Body represents the response body.
 	//

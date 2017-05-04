@@ -2,13 +2,8 @@ package coap
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
-	"github.com/Lobaro/coap-go/coapmsg"
-	"github.com/Lobaro/slip"
-	"github.com/Sirupsen/logrus"
-	"github.com/tarm/serial"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -16,6 +11,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Lobaro/coap-go/coapmsg"
+	"github.com/Sirupsen/logrus"
 )
 
 type StopBits byte
@@ -57,31 +55,20 @@ type TransportUart struct {
 	lastTokenSeq uint8      // Sequence counter
 	rand         *rand.Rand // Random source for token generation
 
-	// UART parameters. In future we might want to configure this per port.
-	Baud        int           // BaudRate
-	ReadTimeout time.Duration // Total timeout
-	Size        byte          // Size is the number of data bits. If 0, DefaultSize is used.
-	Parity      Parity        // Parity is the bit to use and defaults to ParityNone (no parity bit).
-	StopBits    StopBits      // Number of stop bits to use. Default is 1 (1 stop bit).
-
-	connections []Connection
+	Connecter SerialConnecter
 }
 
 func NewTransportUart() *TransportUart {
 	return &TransportUart{
-		mu:          &sync.Mutex{},
-		rand:        rand.New(rand.NewSource(time.Now().UnixNano())),
-		Baud:        115200,
-		Parity:      ParityNone,
-		Size:        0,
-		ReadTimeout: time.Millisecond * 500,
-		StopBits:    Stop1,
+		mu:        &sync.Mutex{},
+		rand:      rand.New(rand.NewSource(time.Now().UnixNano())),
+		Connecter: NewUartConnecter(),
 	}
 
 }
 
 func msgLogEntry(msg *coapmsg.Message) *logrus.Entry {
-	//bin, _ := msg.MarshalBinary()
+	bin := msg.MarshalBinary()
 
 	options := logrus.Fields{}
 	for id, o := range msg.Options() {
@@ -94,8 +81,8 @@ func msgLogEntry(msg *coapmsg.Message) *logrus.Entry {
 		WithField("MessageID", msg.MessageID).
 		//WithField("Payload", msg.Payload).
 		WithField("OptionCount", len(msg.Options())).
-		WithFields(options)
-	//WithField("Bin", bin)
+		WithFields(options).
+		WithField("Bin", bin)
 }
 
 func logMsg(msg *coapmsg.Message, info string) {
@@ -130,7 +117,7 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 		return nil, errors.New(fmt.Sprint("coap: Invalid URL scheme, expected "+UartScheme+" but got: ", req.URL.Scheme))
 	}
 
-	conn, err := t.connect(req.URL.Host)
+	conn, err := t.Connecter.Connect(req.URL.Host)
 	if err != nil {
 		return
 	}
@@ -142,8 +129,8 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	// When canceling an observer we must reuse the interaction
 	ia, err := conn.FindInteraction(req.Token, MessageId(0))
 	if ia == nil || err != nil {
-		// TODO: Pass t.NextToken instead of reqMsg and set the token on sendMessage?
-		ia = t.startInteraction(conn, reqMsg)
+		// TODO: Pass t.NextToken instead of reqMsg.Token and set the token on sendMessage?
+		ia = t.startInteraction(conn, reqMsg.Token)
 	} else {
 		// A new round trip on an existing interaction can only work when we are not listening
 		// for notifications. Else the notifications eat up all responses from the server.
@@ -169,14 +156,14 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	return res, nil
 }
 
-func (t *TransportUart) startInteraction(conn Connection, reqMsg *coapmsg.Message) *Interaction {
+func (t *TransportUart) startInteraction(conn Connection, token Token) *Interaction {
 	ia := &Interaction{
-		token:     Token(reqMsg.Token),
+		token:     Token(token),
 		conn:      conn,
 		receiveCh: make(chan *coapmsg.Message, 0),
 	}
 
-	log.WithField("Token", Token(reqMsg.Token)).Info("Start interaction")
+	log.WithField("Token", Token(token)).Info("Start interaction")
 
 	conn.AddInteraction(ia)
 
@@ -205,23 +192,12 @@ func buildResponse(req *Request, resMsg *coapmsg.Message) *Response {
 	nextCh := make(chan *Response, 0)
 
 	return &Response{
-		StatusCode: int(resMsg.Code),
+		StatusCode: resMsg.Code.Number(),
 		Status:     fmt.Sprintf("%d.%02d %s", resMsg.Code.Class(), resMsg.Code.Detail(), resMsg.Code.String()),
 		Body:       ioutil.NopCloser(bytes.NewReader(resMsg.Payload)),
 		Options:    resMsg.Options(),
 		Request:    req,
 		next:       nextCh,
-	}
-}
-
-func (t *TransportUart) newSerialConfig() *serial.Config {
-	return &serial.Config{
-		Name:        "",
-		Baud:        t.Baud,
-		Parity:      serial.Parity(t.Parity),
-		Size:        t.Size,
-		ReadTimeout: t.ReadTimeout,
-		StopBits:    serial.StopBits(t.StopBits),
 	}
 }
 
@@ -303,49 +279,4 @@ func methodToCode(method string) coapmsg.COAPCode {
 		return code
 	}
 	return coapmsg.GET
-}
-
-var connectMutex sync.Mutex
-
-func (t *TransportUart) connect(host string) (*serialConnection, error) {
-	connectMutex.Lock()
-	defer connectMutex.Unlock()
-
-	serialCfg := t.newSerialConfig()
-	if host == "any" {
-		serialCfg.Name = host
-	} else if !isWindows() {
-		serialCfg.Name = "/dev/" + host
-	} else {
-		serialCfg.Name = host
-	}
-
-	// can recycle connection?
-	for i, c := range t.connections {
-		if c.Closed() {
-			t.connections = deleteConnection(t.connections, i)
-			continue
-		}
-
-		if c, ok := c.(*serialConnection); (ok && c.config.Name == serialCfg.Name) || serialCfg.Name == "any" {
-			log.WithField("Port", c.config.Name).Info("Reuseing Serial Port")
-			return c, nil
-		}
-	}
-
-	port, err := openComPort(serialCfg)
-	if err != nil {
-		return nil, wrapError(err, "Failed to open serial port")
-	}
-	conn := &serialConnection{
-		config:   serialCfg,
-		port:     port,
-		reader:   slip.NewReader(port),
-		writer:   slip.NewWriter(port),
-		deadline: time.Now().Add(UART_CONNECTION_TIMEOUT),
-	}
-	t.connections = append(t.connections, conn)
-	go conn.closeAfterDeadline()
-	go conn.StartReceiveLoop(context.Background())
-	return conn, nil
 }

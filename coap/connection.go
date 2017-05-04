@@ -4,22 +4,23 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/Lobaro/coap-go/coapmsg"
 	"io"
+
+	"github.com/Lobaro/coap-go/coapmsg"
 )
 
 // Connection represents an interface to identify
 // a CoAP connection which might be reused between requests.
 // e.g. for Observe we have to listen for relevant updates.
 type Connection interface {
-	CoapPacketReader
-	CoapPacketWriter
+	PacketReader
+	PacketWriter
 
 	// Starts a loop that reads packets and forwards them to interactions
-	StartReceiveLoop(ctx context.Context)
 	FindInteraction(token Token, msgId MessageId) (*Interaction, error)
 	AddInteraction(ia *Interaction)
 
+	Open() error
 	Close() error
 	Closed() bool
 
@@ -27,18 +28,13 @@ type Connection interface {
 }
 
 // Implemented by connections
-type CoapPacketReader interface {
+type PacketReader interface {
 	ReadPacket() (p []byte, isPrefix bool, err error)
 }
 
 // Implemented by connections
-type CoapPacketWriter interface {
+type PacketWriter interface {
 	WritePacket(p []byte) (err error)
-}
-
-// CoapConnection hold multiple interaction and provides
-// capabilities to send and receive CoAP messages over the wire
-type CoapConnection struct {
 }
 
 func deleteConnection(a []Connection, i int) []Connection {
@@ -49,13 +45,10 @@ func deleteConnection(a []Connection, i int) []Connection {
 }
 
 func sendMessage(conn Connection, msg *coapmsg.Message) error {
-	bin, err := msg.MarshalBinary()
-	if err != nil {
-		return err
-	}
+	bin := msg.MarshalBinary()
 
 	logMsg(msg, "Send")
-	err = conn.WritePacket(bin)
+	err := conn.WritePacket(bin)
 	if err != nil {
 		return err
 	}
@@ -93,7 +86,7 @@ func readMessage(ctx context.Context, conn Connection) (*coapmsg.Message, error)
 	return &msg, nil
 }
 
-func readPacket(reader CoapPacketReader) ([]byte, error) {
+func readPacket(reader PacketReader) ([]byte, error) {
 	buf := &bytes.Buffer{}
 
 	var isPrefix bool
