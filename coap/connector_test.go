@@ -1,7 +1,6 @@
 package coap
 
 import (
-	"bytes"
 	"io"
 	"time"
 
@@ -10,15 +9,15 @@ import (
 )
 
 type TestConnector struct {
-	ReceiveBuf *bytes.Buffer // Data that is received by the client (connection reader)
-	SendBuf    *bytes.Buffer // Data that is send by the client (connection writer)
+	ReceiveBuf *SafeBuffer // Data that is received by the client (connection reader)
+	SendBuf    *SafeBuffer // Data that is send by the client (connection writer)
 	conn       *serialConnection
 }
 
 func NewTestConnector() *TestConnector {
 	return &TestConnector{
-		ReceiveBuf: &bytes.Buffer{},
-		SendBuf:    &bytes.Buffer{},
+		ReceiveBuf: &SafeBuffer{},
+		SendBuf:    &SafeBuffer{},
 	}
 }
 
@@ -42,12 +41,12 @@ func (c *TestConnector) FakeReceiveMessage(msg coapmsg.Message) error {
 }
 
 func (c *TestConnector) WaitForSendMessage() (coapmsg.Message, error) {
-	w := slip.NewReader(c.SendBuf)
+	r := slip.NewReader(c.SendBuf)
 
 	p := make([]byte, 0)
 
 	for {
-		tmp, isPrefix, err := w.ReadPacket()
+		tmp, isPrefix, err := r.ReadPacket()
 		if err != nil && err != io.EOF {
 			return coapmsg.NewMessage(), err
 		}
