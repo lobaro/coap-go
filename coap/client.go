@@ -86,7 +86,7 @@ type Client struct {
 }
 
 const NSTART = 5                                    // Default in CoAP Spec is 1. But we do support more.
-const POSTPONED_RESPONSE_TIMEOUT = 30 * time.Second // How long to wait for a CON after we got an non-piigyback ACK
+const POSTPONED_RESPONSE_TIMEOUT = 30 * time.Second // How long to wait for a CON after we got an non-piggyback ACK
 
 var log logrus.FieldLogger = logrus.StandardLogger()
 
@@ -95,9 +95,13 @@ func SetLogger(logger logrus.FieldLogger) {
 }
 
 // DefaultClient is the default Client and is used by Get, Head, and Post.
-var DefaultClient = &Client{
-	Transport:           DefaultTransport,
-	MaxParallelRequests: NSTART,
+var DefaultClient = NewClient()
+
+func NewClient() *Client {
+	return &Client{
+		Transport:           DefaultTransport,
+		MaxParallelRequests: NSTART,
+	}
 }
 
 func Get(url string) (*Response, error) {

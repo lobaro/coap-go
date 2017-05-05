@@ -127,6 +127,7 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	//###########################################
 
 	// When canceling an observer we must reuse the interaction
+	// TODO: When do we delete interactions?
 	ia, err := conn.FindInteraction(req.Token, MessageId(0))
 	if ia == nil || err != nil {
 		// TODO: Pass t.NextToken instead of reqMsg.Token and set the token on sendMessage?

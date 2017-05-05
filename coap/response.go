@@ -1,9 +1,10 @@
 package coap
 
 import (
-	"github.com/Lobaro/coap-go/coapmsg"
 	"io"
 	"time"
+
+	"github.com/Lobaro/coap-go/coapmsg"
 )
 
 // Maximum length of an observe due to the RFC
@@ -39,7 +40,7 @@ type Response struct {
 	// OBSERVE_TIMEOUT is the longest possible observe duration.
 	//
 	// To stop the observation just send a new get request with
-	// observe option set to 1.
+	// observe option set to 1 (one).
 	next chan *Response
 }
 

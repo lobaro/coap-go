@@ -286,3 +286,75 @@ func RunRequestResponsePostponed(t *testing.T, trans *TransportUart) {
 	}
 	ValidateRemainingBytes(t, testCon)
 }
+
+// TODO: Test handling of unknown Tokens -> Always send NAK!
+func _TestReceiveUnknownToken(t *testing.T) {
+
+}
+
+// TODO: Test Observe scenarios
+// 1) When the client receives a Observe response without knowing the token -> send NAK
+// 2) Test Observe with 1 or 2 updates
+// 3) When the Client times out, send a NAK and tell the server to cancel the observe
+func _TestClientObserve(t *testing.T) {
+
+	client := NewClient()
+	client.Timeout = 10 * time.Second
+	trans := NewTransportUart()
+	testCon := NewTestConnector()
+	trans.Connecter = testCon
+	_, err := testCon.Connect("ignored")
+	if err != nil {
+		t.Error(err)
+	}
+
+	client.Transport = trans
+
+	// Deliver expected network traffic async.
+	asyncDoneChan := make(chan bool)
+	go func() {
+		msg, err := testCon.WaitForSendMessage(3 * time.Second)
+		if err != nil {
+			t.Error(err)
+		}
+
+		// Send ack
+		ack := coapmsg.NewAck(msg.MessageID)
+		ack.Code = coapmsg.Content // For piggyback response.
+		ack.Token = msg.Token
+		ack.Payload = []byte{1}
+		ack.Options().Add(coapmsg.Observe, 1)
+		logrus.Info("Fake Receive ACK")
+
+		// Wait some time before sending second update
+		time.Sleep(100 * time.Millisecond)
+
+		// Send ack
+		ack = coapmsg.NewAck(msg.MessageID)
+		ack.Code = coapmsg.Content // For postponed response.
+		ack.Token = msg.Token
+		ack.Payload = []byte{2}
+		logrus.Info("Fake Receive ACK")
+		testCon.FakeReceiveMessage(ack)
+
+		asyncDoneChan <- true
+	}()
+
+	res, err := client.Observe("coap+uart://any/o")
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Get the second response
+	if res != nil {
+		select {
+		case res = <-res.Next():
+		case <-time.After(3 * time.Second):
+			t.Error("Timeout while waiting for Next")
+		}
+
+	}
+
+	<-asyncDoneChan
+}
