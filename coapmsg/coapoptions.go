@@ -34,6 +34,14 @@ type OptionValue []byte
 
 var NilOption OptionValue = OptionValue{}
 
+func (v OptionValue) IsSet() bool {
+	return len(v) > 0
+}
+
+func (v OptionValue) IsNotSet() bool {
+	return !v.IsSet()
+}
+
 // For signed values just convert the result
 func (v OptionValue) AsUInt8() uint8 {
 	if len(v) == 0 {

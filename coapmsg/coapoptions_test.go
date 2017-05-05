@@ -55,6 +55,54 @@ func TestNumbers(t *testing.T) {
 	}
 }
 
+func TestParsing(t *testing.T) {
+	msg := NewMessage()
+
+	if msg.Options().Get(Observe).IsSet() {
+		t.Error("Expected not existing option to be not set")
+	}
+
+	msg.Options().Set(Observe, 5)
+
+	if !msg.Options().Get(Observe).IsSet() {
+		t.Error("Expected observe option to be set")
+	}
+	if msg.Options().Get(Observe).AsUInt8() != 5 {
+		t.Error("Expected observe option to be 5")
+	}
+	if msg.Options().Get(Observe).AsBytes()[0] != 5 {
+		t.Error("Expected observe option to be 5")
+	}
+	if msg.Options().Get(Observe).AsUInt16() != 5 {
+		t.Error("Expected observe option to be 5")
+	}
+	if msg.Options().Get(Observe).AsUInt32() != 5 {
+		t.Error("Expected observe option to be 5")
+	}
+	if msg.Options().Get(Observe).AsUInt64() != 5 {
+		t.Error("Expected observe option to be 5")
+	}
+
+	msg.Options().Add(Observe, 6)
+
+	if !msg.Options().Get(Observe).IsSet() {
+		t.Error("Expected observe option to be set")
+	}
+	if msg.Options().Get(Observe).AsUInt8() != 5 {
+		t.Errorf("Expected observe option to be 5 but is %v", msg.Options().Get(Observe))
+	}
+
+	// The add has a little nested effect
+	if msg.Options()[Observe][1][0] != 6 {
+		t.Errorf("Expected observe option to be 6 but is %v", msg.Options().Get(Observe))
+	}
+
+	msg.Options().Del(Observe)
+	if msg.Options().Get(Observe).IsSet() {
+		t.Error("Expected deleted existing option to be not set")
+	}
+}
+
 func _TestFindNumbers(t *testing.T) {
 	for i := 3000; i < 3200; i++ {
 		def := OptionDef{

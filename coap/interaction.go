@@ -143,7 +143,9 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 	// Handle observe
 	ia.NotificationCh = make(chan *coapmsg.Message, 0)
 
-	if reqMsg.Options().Get(coapmsg.Observe) == nil && resMsg.Options().Get(coapmsg.Observe) != nil {
+	// An observe request must set the observe option to 0
+	// the server has to response with the observe option set to != 0
+	if reqMsg.Options().Get(coapmsg.Observe).AsUInt8() == 0 && resMsg.Options().Get(coapmsg.Observe).AsUInt8() != 0 {
 		go ia.waitForNotify(ctx)
 	} else {
 		close(ia.NotificationCh)
@@ -171,24 +173,37 @@ func (ia *Interaction) waitForNotify(ctx context.Context) {
 			}
 			return
 		}
-		if resMsg.Type == coapmsg.Confirmable {
-			ack := coapmsg.NewAck(resMsg.MessageID)
-			if err := sendMessage(ia.conn, &ack); err != nil {
-				log.WithError(err).Error("Failed to send ACK for notify")
-				return
-			}
-		}
 
 		select {
 		case ia.NotificationCh <- resMsg:
-		// TODO: Should we only send the ACK when the notification is handled?
-		// As it is now, the user might miss a few notifications but can
-		// than still attack to the Next channel in the response
+			// TODO: Should we really only send the ACK when the notification is handled?
+			// As it is now, the user might miss a few notifications but can
+			// than still attach to the Next channel in the response
+			if resMsg.Type == coapmsg.Confirmable {
+				ack := coapmsg.NewAck(resMsg.MessageID)
+				if err := sendMessage(ia.conn, &ack); err != nil {
+					log.WithError(err).Error("Failed to send ACK for notify")
+					return
+				}
+			}
 		case <-ctx.Done():
 			log.Info("Stopped observer, request context timed out!")
+			// Even non-confirmable messages can be answered with a RST
+			rst := coapmsg.NewRst(resMsg.MessageID)
+			if err := sendMessage(ia.conn, &rst); err != nil {
+				log.WithError(err).Error("Failed to send RST for notify (1)")
+				return
+			}
 			return
 		default:
-			log.WithField("Token", ia.token).Warn("No handler for notification registered")
+			log.WithField("Token", ia.token).Warn("No application handler for notification registered")
+			// Even non-confirmable messages can be answered with a RST
+			rst := coapmsg.NewRst(resMsg.MessageID)
+			if err := sendMessage(ia.conn, &rst); err != nil {
+				log.WithError(err).Error("Failed to send RST for notify (2)")
+				return
+			}
+
 		}
 
 		// An error response MUST lead to a removal of the observer on server side.
@@ -201,7 +216,13 @@ func (ia *Interaction) waitForNotify(ctx context.Context) {
 		// MUST remove the associated entry from the list of observers of the
 		// resource.
 		if resMsg.Code.IsError() {
-			log.Info("Stopped observer, get error response!")
+			log.WithField("code", resMsg.Code.String()).Info("Stopped observer due to error response from server")
+			// No need to send RST anymore but can't harm
+			rst := coapmsg.NewRst(resMsg.MessageID)
+			if err := sendMessage(ia.conn, &rst); err != nil {
+				log.WithError(err).Error("Failed to send RST for notify (3)")
+				return
+			}
 			return
 		}
 	}

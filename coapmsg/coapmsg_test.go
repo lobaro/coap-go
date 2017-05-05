@@ -204,10 +204,7 @@ func TestEncodeMessageWithoutOptionsAndPayload(t *testing.T) {
 		MessageID: 12345,
 	}
 
-	data, err := req.MarshalBinary()
-	if err != nil {
-		t.Fatalf("Error encoding request: %v", err)
-	}
+	data := req.MustMarshalBinary()
 
 	// Inspected by hand.
 	exp := []byte{0x40, 0x1, 0x30, 0x39}
@@ -226,10 +223,7 @@ func TestEncodeMessageSmall(t *testing.T) {
 	req.Options().Add(ETag, []byte("weetag"))
 	req.Options().Add(MaxAge, 3)
 
-	data, err := req.MarshalBinary()
-	if err != nil {
-		t.Fatalf("Error encoding request: %v", err)
-	}
+	data := req.MustMarshalBinary()
 
 	// Inspected by hand.
 	exp := []byte{
@@ -252,10 +246,7 @@ func TestEncodeMessageSmallWithPayload(t *testing.T) {
 	req.Options().Add(ETag, []byte("weetag"))
 	req.Options().Add(MaxAge, 3)
 
-	data, err := req.MarshalBinary()
-	if err != nil {
-		t.Fatalf("Error encoding request: %v", err)
-	}
+	data := req.MustMarshalBinary()
 
 	// Inspected by hand.
 	exp := []byte{
@@ -388,10 +379,7 @@ func TestEncodeMessageVerySmall(t *testing.T) {
 	}
 	req.SetPathString("x")
 
-	data, err := req.MarshalBinary()
-	if err != nil {
-		t.Fatalf("Error encoding request: %v", err)
-	}
+	data := req.MustMarshalBinary()
 
 	// Inspected by hand.
 	exp := []byte{
@@ -411,10 +399,7 @@ func TestEncodeMessageVerySmall2(t *testing.T) {
 	}
 	req.SetPathString("/x")
 
-	data, err := req.MarshalBinary()
-	if err != nil {
-		t.Fatalf("Error encoding request: %v", err)
-	}
+	data := req.MustMarshalBinary()
 
 	// Inspected by hand.
 	exp := []byte{
@@ -435,12 +420,8 @@ func TestEncodeSeveral(t *testing.T) {
 	for p, a := range tests {
 		m := &Message{Type: Confirmable, Code: GET, MessageID: 12345}
 		m.SetPathString(p)
-		b, err := m.MarshalBinary()
-		if err != nil {
-			t.Errorf("Error encoding %#v", p)
-			t.Fail()
-			continue
-		}
+		b := m.MustMarshalBinary()
+
 		m2, err := ParseMessage(b)
 		if err != nil {
 			t.Fatalf("Can't parse my own message at %#v: %v", p, err)
@@ -457,10 +438,8 @@ func TestPathAsOption(t *testing.T) {
 	m := &Message{Type: Confirmable, Code: GET, MessageID: 12345}
 	m.Options().Set(LocationPath, "a")
 	m.Options().Add(LocationPath, "b")
-	got, err := m.MarshalBinary()
-	if err != nil {
-		t.Fatalf("Error marshaling: %v", err)
-	}
+	got := m.MustMarshalBinary()
+
 	exp := []byte{0x40, 0x1, 0x30, 0x39, 0x81, 0x61, 0x1, 0x62}
 	if !bytes.Equal(got, exp) {
 		t.Errorf("Got \n%#v\nwanted \n%#v", got, exp)
@@ -475,10 +454,7 @@ func TestEncodePath14(t *testing.T) {
 	}
 	req.SetPathString("123456789ABCDE")
 
-	data, err := req.MarshalBinary()
-	if err != nil {
-		t.Fatalf("Error encoding request: %v", err)
-	}
+	data := req.MustMarshalBinary()
 
 	// Inspected by hand.
 	exp := []byte{
@@ -499,10 +475,7 @@ func TestEncodePath15(t *testing.T) {
 	}
 	req.SetPathString("123456789ABCDEF")
 
-	data, err := req.MarshalBinary()
-	if err != nil {
-		t.Fatalf("Error encoding request: %v", err)
-	}
+	data := req.MustMarshalBinary()
 
 	// Inspected by hand.
 	exp := []byte{
@@ -528,10 +501,7 @@ func TestEncodeLargePath(t *testing.T) {
 			req.PathString())
 	}
 
-	data, err := req.MarshalBinary()
-	if err != nil {
-		t.Fatalf("Error encoding request: %v", err)
-	}
+	data := req.MustMarshalBinary()
 
 	// Inspected by hand.
 	exp := []byte{
@@ -573,7 +543,7 @@ func TestDecodeLargePath(t *testing.T) {
 	exp.Options().Set(URIPath, path)
 
 	if fmt.Sprintf("%#v", exp) != fmt.Sprintf("%#v", req) {
-		b, _ := exp.MarshalBinary()
+		b := exp.MustMarshalBinary()
 		t.Fatalf("Expected\n%#v\ngot\n%#v\nfor %#v", exp, req, b)
 	}
 }
@@ -821,10 +791,7 @@ func TestEncodeMessageWithAllOptions(t *testing.T) {
 	req.Options().Add(ProxyScheme, "PROXYSCHEME")
 	req.Options().Add(Size1, uint32(9999))
 
-	data, err := req.MarshalBinary()
-	if err != nil {
-		t.Fatalf("Error encoding request: %v", err)
-	}
+	data := req.MustMarshalBinary()
 
 	parsedMsg, err := ParseMessage(data)
 	if err != nil {

@@ -66,18 +66,19 @@ func (c *serialConnection) AddInteraction(ia *Interaction) {
 	c.interactions = append(c.interactions, ia)
 }
 
-func (c *serialConnection) FindInteraction(token Token, msgId MessageId) (*Interaction, error) {
+func (c *serialConnection) FindInteraction(token Token, msgId MessageId) *Interaction {
 	for _, ia := range c.interactions {
 		if ia.token.Equals(token) {
-			return ia, nil
+			return ia
 		}
 		// For empty tokens the message Id must match
-		// TODO: Check message type, for Con and Non we must not match by MessageId
+		// An ACK is sent by the server to confirm a CON but carries no token
+		// TODO: Check also message type?
 		if len(token) == 0 && ia.MessageId == msgId {
-			return ia, nil
+			return ia
 		}
 	}
-	return nil, errors.New("Not Found")
+	return nil
 }
 
 func (c *serialConnection) closeAfterDeadline() {
@@ -177,8 +178,8 @@ func (c *serialConnection) startReceiveLoop(ctx context.Context) {
 			return
 		}
 
-		ia, err := c.FindInteraction(Token(msg.Token), MessageId(msg.MessageID))
-		if err != nil {
+		ia := c.FindInteraction(Token(msg.Token), MessageId(msg.MessageID))
+		if ia == nil {
 			log.WithError(err).
 				WithField("token", msg.Token).
 				WithField("messageId", msg.MessageID).

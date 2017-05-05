@@ -4,10 +4,9 @@ import (
 	"bytes"
 	"context"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
-
-	"sync"
 
 	"github.com/Lobaro/coap-go/coapmsg"
 	"github.com/Sirupsen/logrus"
@@ -61,7 +60,7 @@ func TestUrl(t *testing.T) {
 
 // A test should not leave any bytes on the wire uninterpreted
 func ValidateRemainingBytes(t *testing.T, conn *TestConnector) {
-	var writtenBytes = make([]byte, 500)
+	//var writtenBytes = make([]byte, 500)
 	//n, err := conn.SendBuf.Read(writtenBytes)
 	n := conn.Out.Len()
 
@@ -71,11 +70,11 @@ func ValidateRemainingBytes(t *testing.T, conn *TestConnector) {
 		}*/
 
 	if n > 0 {
-		t.Logf("Unhandled Transport SendBuf %d bytes: %v", n, writtenBytes[0:n])
+		t.Logf("Unhandled Transport SendBuf %d messages", n)
 		t.Error("SendBuf is not empty - handle all bytes in test")
 	}
 
-	var readBytes = make([]byte, 500)
+	//var readBytes = make([]byte, 500)
 	//n, err = conn.ReceiveBuf.Read(readBytes)
 	n = conn.In.Len()
 
@@ -85,7 +84,7 @@ func ValidateRemainingBytes(t *testing.T, conn *TestConnector) {
 		}*/
 
 	if n > 0 {
-		t.Logf("Unhandled Transport ReceiveBuf %d bytes: %v", n, readBytes[0:n])
+		t.Logf("Unhandled Transport SendBuf %d messages", n)
 		t.Error("ReceiveBuf is not empty - handle all bytes in test")
 	}
 }
@@ -227,7 +226,6 @@ func RunRequestResponsePostponed(t *testing.T, trans *TransportUart) {
 		// Send ack
 		ack := coapmsg.NewAck(msg.MessageID)
 		ack.Code = coapmsg.Empty // For postponed response.
-		logrus.Info("Fake Receive ACK")
 		testCon.FakeReceiveMessage(ack)
 
 		// let some time pass and send response
@@ -238,7 +236,6 @@ func RunRequestResponsePostponed(t *testing.T, trans *TransportUart) {
 		res.Token = msg.Token
 		res.Code = coapmsg.Content
 		res.Payload = []byte("test")
-		logrus.Info("Fake Receive CON")
 		testCon.FakeReceiveMessage(res)
 
 		// Expect an acknowledgment for our CON
@@ -287,6 +284,132 @@ func RunRequestResponsePostponed(t *testing.T, trans *TransportUart) {
 	ValidateRemainingBytes(t, testCon)
 }
 
+func NewTestClient(t *testing.T) (*Client, *TestConnector) {
+	client := NewClient()
+	client.Timeout = 10 * time.Second
+	trans := NewTransportUart()
+	testCon := NewTestConnector()
+	trans.Connecter = testCon
+	_, err := testCon.Connect("ignored")
+	if err != nil {
+		t.Error(err)
+	}
+
+	client.Transport = trans
+
+	return client, testCon
+}
+
+// We do 2 GET requests to /foo and /bar after another
+// The answers are send out after both requests reached the server
+// The first response is an empty ACK
+// The second response is a piggyback response to /foo with content test2
+// The third response is a postponed response to /bar with content test1
+// Tokens and message ID's are counting up so they are predictable as "1" and "2"
+func TestParallelRequests(t *testing.T) {
+	client, conn := NewTestClient(t)
+	client.Transport.(*TransportUart).TokenGenerator = NewCountingTokenGenerator()
+
+	wg := &sync.WaitGroup{}
+
+	wg.Add(1)
+	go func() {
+		res, err := client.Get("coap+uart://any/foo")
+		if err != nil {
+			t.Error(err)
+		}
+
+		body := bytes.Buffer{}
+		body.ReadFrom(res.Body)
+		if body.String() != "test1" {
+			t.Errorf("Expected body %s but was %s", "test1", body.String())
+		}
+
+		wg.Done()
+	}()
+
+	wg.Add(1)
+	requestsSend := make(chan bool)
+	go func() {
+		// Wait for first get to be send
+		_, err := conn.WaitForSendMessage(3 * time.Second)
+		if err != nil {
+			t.Error(err)
+		}
+		requestsSend <- true
+		res, err := client.Get("coap+uart://any/bar")
+		if err != nil {
+			t.Error(err)
+		}
+
+		body := bytes.Buffer{}
+		body.ReadFrom(res.Body)
+		if body.String() != "test2" {
+			t.Errorf("Expected body %s but was %s", "test2", body.String())
+		}
+
+		wg.Done()
+	}()
+
+	// Deliver expected network traffic async.
+	wg.Add(1)
+	go func() {
+		// Wait till all requests are send
+		<-requestsSend
+
+		// Wait for first get to be send
+		_, err := conn.WaitForSendMessage(3 * time.Second)
+		if err != nil {
+			t.Error(err)
+		}
+
+		logrus.Info("Start sending responses")
+
+		// Confirm Message 1 as postboned
+		ack := coapmsg.NewAck(1)
+		conn.FakeReceiveMessage(ack)
+
+		// Confirm Message 2
+		ack = coapmsg.NewAck(2)
+		ack.Code = coapmsg.Content // For piggyback response. Default Empty would be postponed
+		ack.Token = []byte{2}
+		ack.Payload = []byte("test2")
+		conn.FakeReceiveMessage(ack)
+
+		// Send postponed result for first request
+		ack = coapmsg.NewMessage()
+		ack.Type = coapmsg.NonConfirmable
+		ack.Code = coapmsg.Content // For piggyback response. Default Empty would be postponed
+		ack.Token = []byte{1}
+		ack.Payload = []byte("test1")
+		conn.FakeReceiveMessage(ack)
+
+		wg.Done()
+	}()
+
+	if waitTimeout(wg, 10*time.Second) {
+		ValidateRemainingBytes(t, conn)
+		t.Log("Test Done.")
+	} else {
+		t.Error("Test Failed: Timeout")
+	}
+
+}
+
+func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
+	c := make(chan struct{})
+	go func() {
+		defer close(c)
+		wg.Wait()
+	}()
+	select {
+	case <-c:
+		return true // completed normally
+	case <-time.After(timeout):
+		return false // timed out
+	}
+}
+
 // TODO: Test handling of unknown Tokens -> Always send NAK!
 func _TestReceiveUnknownToken(t *testing.T) {
 
@@ -296,7 +419,7 @@ func _TestReceiveUnknownToken(t *testing.T) {
 // 1) When the client receives a Observe response without knowing the token -> send NAK
 // 2) Test Observe with 1 or 2 updates
 // 3) When the Client times out, send a NAK and tell the server to cancel the observe
-func _TestClientObserve(t *testing.T) {
+func TestClientObserve(t *testing.T) {
 
 	client := NewClient()
 	client.Timeout = 10 * time.Second
@@ -317,24 +440,45 @@ func _TestClientObserve(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
+		// Client             Server
+		// |                    |
+		// |  GET /temperature  |
+		// |    Token: 0x4a     |   Registration
+		// |  Observe: 0        |
+		// +------------------->|
+		observeOptionVal := msg.Options().Get(coapmsg.Observe).AsUInt8()
+		if observeOptionVal != 0 {
+			t.Errorf("Expected observe option to be '0' but was %d", observeOptionVal)
+		}
 
-		// Send ack
+		// |                    |
+		// |    2.05 Content    |
+		// |    Token: 0x4a     |   Notification of
+		// |  Observe: 12       |   the current state
+		// |  Payload: 22.9 Cel |
+		// |<-------------------+   Repeat N times
+
+		// Send ack with initial
 		ack := coapmsg.NewAck(msg.MessageID)
+		ack.Type = coapmsg.Acknowledgement
 		ack.Code = coapmsg.Content // For piggyback response.
 		ack.Token = msg.Token
-		ack.Payload = []byte{1}
+		ack.Payload = []byte("1")
 		ack.Options().Add(coapmsg.Observe, 1)
 		logrus.Info("Fake Receive ACK")
+		testCon.FakeReceiveMessage(ack)
 
 		// Wait some time before sending second update
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 
-		// Send ack
+		// Send CON with updated data
 		ack = coapmsg.NewAck(msg.MessageID)
+		ack.Type = coapmsg.Confirmable
 		ack.Code = coapmsg.Content // For postponed response.
 		ack.Token = msg.Token
-		ack.Payload = []byte{2}
-		logrus.Info("Fake Receive ACK")
+		ack.Payload = []byte("2")
+		ack.Options().Add(coapmsg.Observe, 2)
+		logrus.Info("Fake Receive CON")
 		testCon.FakeReceiveMessage(ack)
 
 		asyncDoneChan <- true
@@ -346,10 +490,19 @@ func _TestClientObserve(t *testing.T) {
 		t.Error(err)
 	}
 
+	buf := bytes.Buffer{}
+	buf.ReadFrom(res.Body)
+	t.Logf("Got response 1: %s", buf.String())
+
 	// Get the second response
 	if res != nil {
+		logrus.Info("Waiting for response 2")
 		select {
 		case res = <-res.Next():
+			buf.Reset()
+			buf.ReadFrom(res.Body)
+			t.Logf("Got response 2: %s", buf.String())
+
 		case <-time.After(3 * time.Second):
 			t.Error("Timeout while waiting for Next")
 		}

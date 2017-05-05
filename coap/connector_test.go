@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Lobaro/coap-go/coapmsg"
-	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 )
 
@@ -34,7 +33,7 @@ func (c *TestConnector) FakeReceiveData(data []byte) {
 }
 
 func (c *TestConnector) FakeReceiveMessage(msg coapmsg.Message) error {
-	p := msg.MarshalBinary()
+	p := msg.MustMarshalBinary()
 	c.In.WritePacket(p)
 	return nil
 }
@@ -95,7 +94,7 @@ func (rw *PacketBuffer) ReadPacket() (p []byte, isPrefix bool, err error) {
 
 	if len(rw.packets) > 0 {
 		res := rw.packets[0]
-		logrus.WithField("raw", res).Info("ReadPacket from " + rw.name)
+		//logrus.WithField("raw", res).Info("ReadPacket from " + rw.name)
 		rw.packets = rw.packets[1:len(rw.packets)]
 		return res, false, nil
 	}
@@ -105,7 +104,7 @@ func (rw *PacketBuffer) ReadPacket() (p []byte, isPrefix bool, err error) {
 func (rw *PacketBuffer) WritePacket(p []byte) (err error) {
 	rw.mu.Lock()
 	defer rw.mu.Unlock()
-	logrus.WithField("raw", p).Info("WritePacket to " + rw.name)
+	//logrus.WithField("raw", p).Info("WritePacket to " + rw.name)
 	rw.packets = append(rw.packets, p)
 	return nil
 }

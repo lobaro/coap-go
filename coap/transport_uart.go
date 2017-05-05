@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math/rand"
 	"strconv"
 	"strings"
 	"sync"
@@ -50,25 +49,24 @@ const UART_CONNECTION_TIMEOUT = 1 * time.Minute
 //
 // The URI host can be set to "any" to take the first open port found
 type TransportUart struct {
-	mu           *sync.Mutex
-	lastMsgId    uint16     // Sequence counter
-	lastTokenSeq uint8      // Sequence counter
-	rand         *rand.Rand // Random source for token generation
+	mu        *sync.Mutex
+	lastMsgId uint16 // Sequence counter
 
-	Connecter SerialConnecter
+	TokenGenerator TokenGenerator
+	Connecter      SerialConnecter
 }
 
 func NewTransportUart() *TransportUart {
 	return &TransportUart{
-		mu:        &sync.Mutex{},
-		rand:      rand.New(rand.NewSource(time.Now().UnixNano())),
-		Connecter: NewUartConnecter(),
+		mu:             &sync.Mutex{},
+		TokenGenerator: NewRandomTokenGenerator(),
+		Connecter:      NewUartConnecter(),
 	}
 
 }
 
 func msgLogEntry(msg *coapmsg.Message) *logrus.Entry {
-	bin := msg.MarshalBinary()
+	bin := msg.MustMarshalBinary()
 
 	options := logrus.Fields{}
 	for id, o := range msg.Options() {
@@ -98,7 +96,7 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	// The client might set a specific token, e.g. to cancel an observe.
 	// If there is no token set we create a random token.
 	if len(req.Token) == 0 {
-		req.Token = t.nextToken()
+		req.Token = t.TokenGenerator.NextToken()
 	}
 
 	reqMsg, err := t.buildRequestMessage(req)
@@ -128,13 +126,13 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 
 	// When canceling an observer we must reuse the interaction
 	// TODO: When do we delete interactions?
-	ia, err := conn.FindInteraction(req.Token, MessageId(0))
-	if ia == nil || err != nil {
-		// TODO: Pass t.NextToken instead of reqMsg.Token and set the token on sendMessage?
+	ia := conn.FindInteraction(req.Token, MessageId(0))
+	if ia == nil {
 		ia = t.startInteraction(conn, reqMsg.Token)
 	} else {
 		// A new round trip on an existing interaction can only work when we are not listening
 		// for notifications. Else the notifications eat up all responses from the server.
+		// TODO: We should be able to handle round trips during observe
 		// TODO: Throws without null check when requesting unknown resource
 		if ia.StopListenForNotifications != nil {
 			ia.StopListenForNotifications()
@@ -152,8 +150,12 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 
 	res = buildResponse(req, resMsg)
 
-	// TODO: We call ia.waitForNotify during RoundTrip already - is this needed here?
-	//go waitForNotify(ia, req, res)
+	// TODO: I do not like that we need 2 go routines (1 here and one inside the interaction) for handling notifies
+	// An observe request must set the observe option to 0
+	// the server has to response with the observe option set to != 0
+	if reqMsg.Options().Get(coapmsg.Observe).IsNotSet() && resMsg.Options().Get(coapmsg.Observe).AsUInt8() != 0 {
+		go handleInteractionNotify(ia, req, res)
+	}
 
 	return res, nil
 }
@@ -172,7 +174,7 @@ func (t *TransportUart) startInteraction(conn Connection, token Token) *Interact
 	return ia
 }
 
-func waitForNotify(ia *Interaction, req *Request, currResponse *Response) {
+func handleInteractionNotify(ia *Interaction, req *Request, currResponse *Response) {
 
 	defer close(currResponse.next)
 
@@ -182,7 +184,7 @@ func waitForNotify(ia *Interaction, req *Request, currResponse *Response) {
 			res := buildResponse(req, resMsg)
 			currResponse.next <- res
 
-			go waitForNotify(ia, req, res)
+			go handleInteractionNotify(ia, req, res)
 		} else {
 			// Also happens for all non observe requests since ia.NotificationCh will be closed.
 			log.Info("Stopped observer, no more notifies expected.")
@@ -253,18 +255,6 @@ func (t *TransportUart) nextMessageId() uint16 {
 	t.lastMsgId++
 	msgId := t.lastMsgId
 	return msgId
-}
-
-func (t *TransportUart) nextToken() []byte {
-	// It's critical to not get the same token twice,
-	// since we identify our interactions by the token
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	tok := make([]byte, 4)
-	t.rand.Read(tok)
-	t.lastTokenSeq++
-	tok[0] = t.lastTokenSeq
-	return tok
 }
 
 var methodToCodeTable = map[string]coapmsg.COAPCode{

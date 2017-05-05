@@ -6,8 +6,9 @@ import (
 	"errors"
 	"io"
 
-	"github.com/Lobaro/coap-go/coapmsg"
 	"time"
+
+	"github.com/Lobaro/coap-go/coapmsg"
 )
 
 // Connection represents an interface to identify
@@ -18,7 +19,7 @@ type Connection interface {
 	PacketWriter
 
 	// Starts a loop that reads packets and forwards them to interactions
-	FindInteraction(token Token, msgId MessageId) (*Interaction, error)
+	FindInteraction(token Token, msgId MessageId) *Interaction
 	AddInteraction(ia *Interaction)
 
 	Open() error
@@ -46,7 +47,7 @@ func deleteConnection(a []Connection, i int) []Connection {
 }
 
 func sendMessage(conn Connection, msg *coapmsg.Message) error {
-	bin := msg.MarshalBinary()
+	bin := msg.MustMarshalBinary()
 
 	logMsg(msg, "Send")
 	err := conn.WritePacket(bin)

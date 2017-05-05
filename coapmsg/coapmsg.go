@@ -246,8 +246,13 @@ const (
 	extoptError      = 15
 )
 
+// Fulfill the encoding.BinaryMarshaler interface
+func (m *Message) MarshalBinary() ([]byte, error) {
+	return m.MustMarshalBinary(), nil
+}
+
 // MarshalBinary produces the binary form of this Message.
-func (m *Message) MarshalBinary() []byte {
+func (m *Message) MustMarshalBinary() []byte {
 	tmpbuf := []byte{0, 0}
 	binary.BigEndian.PutUint16(tmpbuf, m.MessageID)
 
