@@ -352,8 +352,8 @@ func (m *Message) MustMarshalBinary() []byte {
 
 	for _, id := range ids {
 		for _, val := range options[id] {
-			writeOptHeader(int(id)-prev, len(val))
-			buf.Write(val)
+			writeOptHeader(int(id)-prev, val.Len())
+			buf.Write(val.AsBytes())
 			prev = int(id)
 		}
 	}

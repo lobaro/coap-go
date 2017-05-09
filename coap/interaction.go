@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"time"
 
 	"github.com/Lobaro/coap-go/coapmsg"
 )
@@ -144,8 +145,8 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 	ia.NotificationCh = make(chan *coapmsg.Message, 0)
 
 	// An observe request must set the observe option to 0
-	// the server has to response with the observe option set to != 0
-	if reqMsg.Options().Get(coapmsg.Observe).AsUInt8() == 0 && resMsg.Options().Get(coapmsg.Observe).AsUInt8() != 0 {
+	// the server has to response with the observe option set
+	if reqMsg.Options().Get(coapmsg.Observe).AsUInt8() == 0 && resMsg.Options().Get(coapmsg.Observe).IsSet() {
 		go ia.waitForNotify(ctx)
 	} else {
 		close(ia.NotificationCh)
@@ -187,7 +188,7 @@ func (ia *Interaction) waitForNotify(ctx context.Context) {
 				}
 			}
 		case <-ctx.Done():
-			log.Info("Stopped observer, request context timed out!")
+			log.Info("Stopped observer, request context timed out! Send RST.")
 			// Even non-confirmable messages can be answered with a RST
 			rst := coapmsg.NewRst(resMsg.MessageID)
 			if err := sendMessage(ia.conn, &rst); err != nil {
@@ -195,8 +196,8 @@ func (ia *Interaction) waitForNotify(ctx context.Context) {
 				return
 			}
 			return
-		default:
-			log.WithField("Token", ia.token).Warn("No application handler for notification registered")
+		case <-time.After(5 * time.Second): // default: Give the app some time to register an handler before send RST
+			log.WithField("Token", ia.token).Warn("No application handler for notification registered. Send RST.")
 			// Even non-confirmable messages can be answered with a RST
 			rst := coapmsg.NewRst(resMsg.MessageID)
 			if err := sendMessage(ia.conn, &rst); err != nil {

@@ -30,12 +30,15 @@ func (o *OptionDef) NoCacheKey() bool {
 	return bool((o.Number & 0x1e) == 0x1c)
 }
 
-type OptionValue []byte
+type OptionValue struct {
+	b     []byte
+	isNil bool
+}
 
-var NilOption OptionValue = OptionValue{}
+var NilOption OptionValue = OptionValue{isNil: true}
 
 func (v OptionValue) IsSet() bool {
-	return len(v) > 0
+	return !v.isNil
 }
 
 func (v OptionValue) IsNotSet() bool {
@@ -44,55 +47,58 @@ func (v OptionValue) IsNotSet() bool {
 
 // For signed values just convert the result
 func (v OptionValue) AsUInt8() uint8 {
-	if len(v) == 0 {
+	if len(v.b) == 0 {
 		return 0
 	}
-	return v[0]
+	return v.b[0]
 }
 
 // For signed values just convert the result
 func (v OptionValue) AsUInt16() uint16 {
-	if len(v) == 0 {
+	if len(v.b) == 0 {
 		return 0
 	}
 	val := v
-	for len(val) < 2 {
-		val = append(val, 0)
+	for len(val.b) < 2 {
+		val.b = append(val.b, 0)
 	}
-	return binary.LittleEndian.Uint16(val)
+	return binary.LittleEndian.Uint16(val.b)
 }
 
 // For signed values just convert the result
 func (v OptionValue) AsUInt32() uint32 {
-	if len(v) == 0 {
+	if len(v.b) == 0 {
 		return 0
 	}
 	val := v
-	for len(val) < 4 {
-		val = append(val, 0)
+	for len(val.b) < 4 {
+		val.b = append(val.b, 0)
 	}
-	return binary.LittleEndian.Uint32(val)
+	return binary.LittleEndian.Uint32(val.b)
 }
 
 // For signed values just convert the result
 func (v OptionValue) AsUInt64() uint64 {
 
-	if len(v) == 0 {
+	if len(v.b) == 0 {
 		return 0
 	}
 	val := v
-	for len(val) < 8 {
-		val = append(val, 0)
+	for len(val.b) < 8 {
+		val.b = append(val.b, 0)
 	}
-	return binary.LittleEndian.Uint64(val)
+	return binary.LittleEndian.Uint64(val.b)
 }
 
 func (v OptionValue) AsString() string {
-	return string(v)
+	return string(v.b)
 }
 
 func (v OptionValue) AsBytes() []byte {
-	return v
+	return v.b
+}
+func (v OptionValue) Len() int {
+	return len(v.b)
 }
 
 // A CoapOptions represents a option mapping
@@ -106,7 +112,7 @@ func (h CoapOptions) Add(key OptionId, value interface{}) error {
 	if err != nil {
 		return err
 	}
-	h[key] = append(h[key], v)
+	h[key] = append(h[key], OptionValue{v, false})
 	return nil
 }
 
@@ -118,7 +124,7 @@ func (h CoapOptions) Set(key OptionId, value interface{}) error {
 	if err != nil {
 		return err
 	}
-	h[key] = []OptionValue{v}
+	h[key] = []OptionValue{{v, false}}
 	return nil
 }
 

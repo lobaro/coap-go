@@ -150,10 +150,11 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 
 	res = buildResponse(req, resMsg)
 
+	//res.next = ia.NotificationCh
 	// TODO: I do not like that we need 2 go routines (1 here and one inside the interaction) for handling notifies
 	// An observe request must set the observe option to 0
 	// the server has to response with the observe option set to != 0
-	if reqMsg.Options().Get(coapmsg.Observe).IsNotSet() && resMsg.Options().Get(coapmsg.Observe).AsUInt8() != 0 {
+	if reqMsg.Options().Get(coapmsg.Observe).AsUInt8() == 0 && resMsg.Options().Get(coapmsg.Observe).IsSet() {
 		go handleInteractionNotify(ia, req, res)
 	}
 

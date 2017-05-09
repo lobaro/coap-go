@@ -203,6 +203,8 @@ func optionValueToBytes(optVal interface{}) ([]byte, error) {
 		v = uint32(i)
 	case uint32:
 		v = i
+	case nil:
+		return nil, nil
 	default:
 		return nil, fmt.Errorf("invalid type for option type: %T (%v)", optVal, optVal)
 	}

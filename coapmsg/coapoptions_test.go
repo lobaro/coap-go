@@ -62,6 +62,16 @@ func TestParsing(t *testing.T) {
 		t.Error("Expected not existing option to be not set")
 	}
 
+	// Setting to nil is totally valid and sets the option
+	err := msg.Options().Set(Observe, nil)
+
+	if err != nil {
+		t.Error(err)
+	}
+	if !msg.Options().Get(Observe).IsSet() {
+		t.Error("Expected observe option to be set")
+	}
+
 	msg.Options().Set(Observe, 5)
 
 	if !msg.Options().Get(Observe).IsSet() {
@@ -93,7 +103,7 @@ func TestParsing(t *testing.T) {
 	}
 
 	// The add has a little nested effect
-	if msg.Options()[Observe][1][0] != 6 {
+	if msg.Options()[Observe][1].AsBytes()[0] != 6 {
 		t.Errorf("Expected observe option to be 6 but is %v", msg.Options().Get(Observe))
 	}
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Lobaro/coap-go/coapmsg"
+	"github.com/Sirupsen/logrus"
 	"github.com/tarm/serial"
 )
 

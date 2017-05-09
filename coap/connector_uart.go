@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Lobaro/slip"
+	"github.com/Sirupsen/logrus"
 	"github.com/tarm/serial"
 )
 
@@ -75,6 +76,7 @@ func (c *UartConnector) Connect(host string) (*serialConnection, error) {
 	if err != nil {
 		return nil, wrapError(err, "Failed to open serial port")
 	}
+	logrus.WithField("port", serialCfg.Name).WithField("baud", serialCfg.Baud).Info("Opening serial port ...")
 	conn := &serialConnection{
 		config:   serialCfg,
 		port:     port,

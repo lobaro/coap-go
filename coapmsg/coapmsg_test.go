@@ -45,7 +45,7 @@ func assertEqualMessages(t *testing.T, e, a Message) {
 			for i, val := range vals {
 				expected := val
 				actual := a.options[id][i]
-				if !bytes.Equal(expected, actual) {
+				if !bytes.Equal(expected.AsBytes(), actual.AsBytes()) {
 					t.Errorf("Expected Option ID %v value %v, got %v", id, expected, actual)
 				}
 			}
@@ -146,7 +146,7 @@ func TestMessageConfirmable(t *testing.T) {
 
 func TestMissingOption(t *testing.T) {
 	gotEmpty := Message{}.options.Get(MaxAge)
-	if len(gotEmpty) != 0 {
+	if gotEmpty.Len() != 0 {
 		t.Errorf("Expected empty slice, got %v", gotEmpty)
 	}
 
