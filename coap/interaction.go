@@ -205,7 +205,7 @@ func (ia *Interaction) waitForNotify(ctx context.Context) {
 			// TODO: Should we really only send the ACK when the notification is handled?
 			// As it is now, the user might miss a few notifications but can
 			// than still attach to the Next channel in the response
-			log.Info("ia.NotificationCh <- resMsg: send ACK")
+			//log.Info("ia.NotificationCh <- resMsg: send ACK")
 			if resMsg.Type == coapmsg.Confirmable {
 				ack := coapmsg.NewAck(resMsg.MessageID)
 				if err := sendMessage(ia.conn, &ack); err != nil {

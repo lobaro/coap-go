@@ -170,6 +170,7 @@ func openComPort(serialCfg *serial.Config) (port *serial.Port, err error) {
 
 func (c *serialConnection) startReceiveLoop(ctx context.Context) {
 	for {
+		log.Info("Receive loop")
 		msg, err := readMessage(ctx, c)
 
 		if err != nil {
