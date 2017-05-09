@@ -55,6 +55,17 @@ func (ia *Interaction) readMessage(ctx context.Context) (*coapmsg.Message, error
 var ERROR_READ_ACK = "Failed to read ACK"
 
 func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (resMsg *coapmsg.Message, err error) {
+	// A new round trip on an existing interaction can only work when we are not listening
+	// for notifications. Else the notifications eats up all responses from the server.
+	// One of the few reason to do this is to cancel an observe anyway
+	//
+	// We are still able to handle interactions for other tokens in parallel
+	//
+	// Throws without nil check when requesting unknown resource
+	if ia.StopListenForNotifications != nil {
+		ia.StopListenForNotifications()
+	}
+
 	ia.lastMessageId = MessageId(reqMsg.MessageID)
 
 	// send the request
@@ -158,6 +169,7 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 		go ia.waitForNotify(ctx)
 	} else {
 		close(ia.NotificationCh)
+		ia.conn.RemoveInteraction(ia)
 	}
 
 	if err = validateToken(reqMsg, resMsg); err != nil {
@@ -187,15 +199,26 @@ func (ia *Interaction) sendCancelObserve() {
 func (ia *Interaction) waitForNotify(ctx context.Context) {
 	defer close(ia.NotificationCh)
 	withCancel, cancel := context.WithCancel(ctx)
-	ia.StopListenForNotifications = cancel
+
+	logWithToken := log.WithField("token", ia.Token())
+
+	cancelDone := make(chan struct{})
+	defer close(cancelDone)
+	ia.StopListenForNotifications = func() {
+		cancel()
+		// We must actively wait for the cancel to be done,
+		// else readMessage could eat up bytes that it should not
+		<-cancelDone
+		logWithToken.Info("Stopped to listen for notifications")
+	}
 
 	for {
 		resMsg, err := ia.readMessage(withCancel)
 		if err != nil {
 			if err != READ_MESSAGE_CTX_DONE {
-				log.WithError(err).Error("Stopped observer unexpected")
+				logWithToken.WithError(err).Error("Stopped observer unexpected")
 			} else {
-				log.Info("Stopped observer")
+				logWithToken.Info("Stopped observer")
 			}
 			return
 		}
@@ -226,7 +249,7 @@ func (ia *Interaction) waitForNotify(ctx context.Context) {
 			// Happens when the NotificationCh is closed aka no client is listening
 			// This is a bit indirect since the transport has another layer to convert
 			// the messages into responses for the client
-			log.WithField("Token", ia.Token()).Error("No handler for notification messages registered. Send RST.")
+			logWithToken.Error("No handler for notification messages registered. Send RST.")
 			// Even non-confirmable messages can be answered with a RST
 			rst := coapmsg.NewRst(resMsg.MessageID)
 			if err := sendMessage(ia.conn, &rst); err != nil {

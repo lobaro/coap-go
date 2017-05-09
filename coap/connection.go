@@ -21,6 +21,7 @@ type Connection interface {
 	// Starts a loop that reads packets and forwards them to interactions
 	FindInteraction(token Token, msgId MessageId) *Interaction
 	AddInteraction(ia *Interaction)
+	RemoveInteraction(ia *Interaction)
 
 	Open() error
 	Close() error

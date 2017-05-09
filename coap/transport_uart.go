@@ -105,7 +105,7 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	}
 
 	//###########################################
-	// Open the connection
+	// Open / Reuse the connection
 	//###########################################
 
 	if req.URL == nil {
@@ -128,18 +128,7 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	// TODO: When do we delete interactions?
 	ia := conn.FindInteraction(req.Token, MessageId(0))
 	if ia == nil {
-		ia = t.startInteraction(conn, reqMsg)
-	} else {
-		// A new round trip on an existing interaction can only work when we are not listening
-		// for notifications. Else the notifications eat up all responses from the server.
-		// One of the few reason to do this is to cancel an observe anyway
-		//
-		// We are still able to handle interactions for other tokens in parallel
-		//
-		// Throws without null check when requesting unknown resource
-		if ia.StopListenForNotifications != nil {
-			ia.StopListenForNotifications()
-		}
+		ia = startInteraction(conn, reqMsg)
 	}
 
 	resMsg, err := ia.RoundTrip(req.Context(), reqMsg)
@@ -164,7 +153,7 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	return res, nil
 }
 
-func (t *TransportUart) startInteraction(conn Connection, reqMsg *coapmsg.Message) *Interaction {
+func startInteraction(conn Connection, reqMsg *coapmsg.Message) *Interaction {
 	ia := &Interaction{
 		req:       *reqMsg,
 		conn:      conn,

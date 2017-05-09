@@ -66,6 +66,17 @@ func (c *serialConnection) AddInteraction(ia *Interaction) {
 	c.interactions = append(c.interactions, ia)
 }
 
+func (c *serialConnection) RemoveInteraction(interaction *Interaction) {
+	for i, ia := range c.interactions {
+		if ia == interaction {
+			copy(c.interactions[i:], c.interactions[i+1:])
+			c.interactions[len(c.interactions)-1] = nil // or the zero value of T
+			c.interactions = c.interactions[:len(c.interactions)-1]
+			return
+		}
+	}
+}
+
 func (c *serialConnection) FindInteraction(token Token, msgId MessageId) *Interaction {
 	for _, ia := range c.interactions {
 		if ia.Token().Equals(token) {
@@ -170,7 +181,7 @@ func openComPort(serialCfg *serial.Config) (port *serial.Port, err error) {
 
 func (c *serialConnection) startReceiveLoop(ctx context.Context) {
 	for {
-		log.Info("Receive loop")
+		//log.Info("Receive loop")
 		msg, err := readMessage(ctx, c)
 
 		if err != nil {

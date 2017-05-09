@@ -151,6 +151,10 @@ func TestRequestResponsePiggyback(t *testing.T) {
 		t.Error("Test Failed: Timeout")
 	}
 	ValidateRemainingBytes(t, testCon)
+
+	if len(testCon.conn.interactions) != 0 {
+		t.Errorf("Interactions not cleaned up! len: %d", len(testCon.conn.interactions))
+	}
 }
 
 // Ensures everything runs in parallel
@@ -163,6 +167,7 @@ func TestMany(t *testing.T) {
 		go func() {
 			TestRequestResponsePostponed(t)
 			TestRequestResponsePiggyback(t)
+			//TestClientObserve(t)
 			wg.Done()
 		}()
 	}
@@ -170,10 +175,10 @@ func TestMany(t *testing.T) {
 	wg.Wait()
 }
 
-// Fails yet
+// Fails yet, probably because we do not send responses in the correct order when running parallel
 func _TestManyParallel(t *testing.T) {
 	var wg sync.WaitGroup
-	n := 2
+	n := 20
 	wg.Add(n)
 
 	trans := NewTransportUart()
@@ -282,6 +287,10 @@ func RunRequestResponsePostponed(t *testing.T, trans *TransportUart) {
 		t.Error("Test Failed: Timeout")
 	}
 	ValidateRemainingBytes(t, testCon)
+
+	if len(testCon.conn.interactions) != 0 {
+		t.Errorf("Interactions not cleaned up! len: %d", len(testCon.conn.interactions))
+	}
 }
 
 func NewTestClient(t *testing.T) (*Client, *TestConnector) {
@@ -389,6 +398,11 @@ func TestParallelRequests(t *testing.T) {
 
 	if waitTimeout(wg, 10*time.Second) {
 		ValidateRemainingBytes(t, conn)
+
+		if len(conn.conn.interactions) != 0 {
+			t.Errorf("Interactions not cleaned up! len: %d", len(conn.conn.interactions))
+		}
+
 		t.Log("Test Done.")
 	} else {
 		t.Error("Test Failed: Timeout")
@@ -474,11 +488,33 @@ func TestClientObserve(t *testing.T) {
 		// Send CON with updated data
 		ack = coapmsg.NewAck(msg.MessageID)
 		ack.Type = coapmsg.Confirmable
-		ack.Code = coapmsg.Content // For postponed response.
+		ack.Code = coapmsg.Content // For piggyback response.
 		ack.Token = msg.Token
 		ack.Payload = []byte("2")
 		ack.Options().Add(coapmsg.Observe, 2)
 		logrus.Info("Fake Receive CON")
+		testCon.FakeReceiveMessage(ack)
+
+		// Wait for the ACK of the last CON message
+		msg, err = testCon.WaitForSendMessage(3 * time.Second)
+		if err != nil {
+			t.Error(err)
+		}
+		if msg.Type != coapmsg.Acknowledgement {
+			t.Error("Expected ACK for con")
+		}
+
+		// Wait for Cancel observe
+		msg, err = testCon.WaitForSendMessage(3 * time.Second)
+		if err != nil {
+			t.Error(err)
+		}
+		if msg.Options().Get(coapmsg.Observe).AsUInt8() != 1 {
+			t.Error("Expected cancel observe (=1) option")
+		}
+		ack = coapmsg.NewAck(msg.MessageID)
+		ack.Token = msg.Token
+		ack.Code = coapmsg.Content
 		testCon.FakeReceiveMessage(ack)
 
 		asyncDoneChan <- true
@@ -492,6 +528,11 @@ func TestClientObserve(t *testing.T) {
 
 	buf := bytes.Buffer{}
 	buf.ReadFrom(res.Body)
+
+	if buf.String() != "1" {
+		t.Errorf("Expected body '1' but got %s", buf.String())
+	}
+
 	t.Logf("Got response 1: %s", buf.String())
 
 	// Get the second response
@@ -501,8 +542,14 @@ func TestClientObserve(t *testing.T) {
 		case res = <-res.Next():
 			buf.Reset()
 			buf.ReadFrom(res.Body)
+			if buf.String() != "2" {
+				t.Errorf("Expected body '2' but got %s", buf.String())
+			}
 			t.Logf("Got response 2: %s", buf.String())
 
+			time.Sleep(200 * time.Millisecond)
+			t.Log("Canceling the observe")
+			client.CancelObserve(res)
 		case <-time.After(3 * time.Second):
 			t.Error("Timeout while waiting for Next")
 		}
@@ -510,4 +557,10 @@ func TestClientObserve(t *testing.T) {
 	}
 
 	<-asyncDoneChan
+
+	if len(testCon.conn.interactions) != 0 {
+		t.Errorf("Interactions not cleaned up! len: %d", len(testCon.conn.interactions))
+	}
+
+	ValidateRemainingBytes(t, testCon)
 }
