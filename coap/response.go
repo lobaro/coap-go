@@ -41,6 +41,8 @@ type Response struct {
 	//
 	// To stop the observation just send a new get request with
 	// observe option set to 1 (one).
+	//
+	// Must be unbuffered, to be able to detect if the application is listening
 	next chan *Response
 }
 

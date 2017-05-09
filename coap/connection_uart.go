@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Lobaro/coap-go/coapmsg"
-	"github.com/Sirupsen/logrus"
 	"github.com/tarm/serial"
 )
 
@@ -69,13 +68,13 @@ func (c *serialConnection) AddInteraction(ia *Interaction) {
 
 func (c *serialConnection) FindInteraction(token Token, msgId MessageId) *Interaction {
 	for _, ia := range c.interactions {
-		if ia.token.Equals(token) {
+		if ia.Token().Equals(token) {
 			return ia
 		}
 		// For empty tokens the message Id must match
 		// An ACK is sent by the server to confirm a CON but carries no token
 		// TODO: Check also message type?
-		if len(token) == 0 && ia.MessageId == msgId {
+		if len(token) == 0 && ia.lastMessageId == msgId {
 			return ia
 		}
 	}

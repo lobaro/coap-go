@@ -128,12 +128,15 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	// TODO: When do we delete interactions?
 	ia := conn.FindInteraction(req.Token, MessageId(0))
 	if ia == nil {
-		ia = t.startInteraction(conn, reqMsg.Token)
+		ia = t.startInteraction(conn, reqMsg)
 	} else {
 		// A new round trip on an existing interaction can only work when we are not listening
 		// for notifications. Else the notifications eat up all responses from the server.
-		// TODO: We should be able to handle round trips during observe
-		// TODO: Throws without null check when requesting unknown resource
+		// One of the few reason to do this is to cancel an observe anyway
+		//
+		// We are still able to handle interactions for other tokens in parallel
+		//
+		// Throws without null check when requesting unknown resource
 		if ia.StopListenForNotifications != nil {
 			ia.StopListenForNotifications()
 		}
@@ -141,7 +144,7 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 
 	resMsg, err := ia.RoundTrip(req.Context(), reqMsg)
 	if err != nil {
-		return nil, wrapError(err, fmt.Sprint("Failed Interaction Roundtrip with Token ", ia.token))
+		return nil, wrapError(err, fmt.Sprint("Failed Interaction Roundtrip with Token ", ia.Token()))
 	}
 
 	//###########################################
@@ -155,27 +158,27 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	// An observe request must set the observe option to 0
 	// the server has to response with the observe option set to != 0
 	if reqMsg.Options().Get(coapmsg.Observe).AsUInt8() == 0 && resMsg.Options().Get(coapmsg.Observe).IsSet() {
-		go handleInteractionNotify(ia, req, res)
+		go handleInteractionNotifyMessage(ia, req, res)
 	}
 
 	return res, nil
 }
 
-func (t *TransportUart) startInteraction(conn Connection, token Token) *Interaction {
+func (t *TransportUart) startInteraction(conn Connection, reqMsg *coapmsg.Message) *Interaction {
 	ia := &Interaction{
-		token:     Token(token),
+		req:       *reqMsg,
 		conn:      conn,
 		receiveCh: make(chan *coapmsg.Message, 0),
 	}
 
-	log.WithField("Token", Token(token)).Info("Start interaction")
+	log.WithField("Token", ia.Token()).Info("Start interaction")
 
 	conn.AddInteraction(ia)
 
 	return ia
 }
 
-func handleInteractionNotify(ia *Interaction, req *Request, currResponse *Response) {
+func handleInteractionNotifyMessage(ia *Interaction, req *Request, currResponse *Response) {
 
 	defer close(currResponse.next)
 
@@ -183,9 +186,15 @@ func handleInteractionNotify(ia *Interaction, req *Request, currResponse *Respon
 	case resMsg, ok := <-ia.NotificationCh:
 		if ok {
 			res := buildResponse(req, resMsg)
-			currResponse.next <- res
+			select {
+			case currResponse.next <- res: // MUST be unbuffered, else we can't detect a not listening client
+				// Async-Recursion only for defer close to work. Else we could use a for-loop
+				go handleInteractionNotifyMessage(ia, req, res)
+			case <-time.After(5 * time.Second): // Give some time for the client to handle res.Next()
+				log.WithField("Token", ia.Token()).Warn("No app handler for notification response registered. Stop listen for notifications.")
+				ia.StopListenForNotifications()
+			}
 
-			go handleInteractionNotify(ia, req, res)
 		} else {
 			// Also happens for all non observe requests since ia.NotificationCh will be closed.
 			log.Info("Stopped observer, no more notifies expected.")
@@ -194,15 +203,13 @@ func handleInteractionNotify(ia *Interaction, req *Request, currResponse *Respon
 }
 
 func buildResponse(req *Request, resMsg *coapmsg.Message) *Response {
-	nextCh := make(chan *Response, 0)
-
 	return &Response{
 		StatusCode: resMsg.Code.Number(),
 		Status:     fmt.Sprintf("%d.%02d %s", resMsg.Code.Class(), resMsg.Code.Detail(), resMsg.Code.String()),
 		Body:       ioutil.NopCloser(bytes.NewReader(resMsg.Payload)),
 		Options:    resMsg.Options(),
 		Request:    req,
-		next:       nextCh,
+		next:       make(chan *Response, 0),
 	}
 }
 

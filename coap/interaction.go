@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"time"
 
 	"github.com/Lobaro/coap-go/coapmsg"
 )
@@ -14,20 +13,29 @@ type MessageId uint16
 
 // Interaction tracks one interaction between a CoAP client and Server.
 // The Interaction is created with a request and ends with a response.
+// An interaction is bound to a CoAP Token.
+//
+// For observe multiple requests (register, deregister)
+// and responses (Notifies) might belong to a single interaction
 type Interaction struct {
-	req        *Request
-	token      Token
-	MessageId  MessageId
-	AckPending bool
-	conn       Connection
-	receiveCh  chan *coapmsg.Message
+	req           coapmsg.Message // initial request message
+	lastMessageId MessageId       // Last message Id, used to match ACK's
+	conn          Connection
+	receiveCh     chan *coapmsg.Message
 
 	// CancelObserve will stop the interaction to listen for Notifications
 	StopListenForNotifications context.CancelFunc
-	NotificationCh             chan *coapmsg.Message
+
+	// Channel to hand over raw coap messages from notification updates
+	// to the underlying transport where they can be converted into response structs
+	NotificationCh chan *coapmsg.Message
 }
 
 type Interactions []*Interaction
+
+func (ia *Interaction) Token() Token {
+	return ia.req.Token
+}
 
 func (ia *Interaction) HandleMessage(msg *coapmsg.Message) {
 	ia.receiveCh <- msg
@@ -47,7 +55,7 @@ func (ia *Interaction) readMessage(ctx context.Context) (*coapmsg.Message, error
 var ERROR_READ_ACK = "Failed to read ACK"
 
 func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (resMsg *coapmsg.Message, err error) {
-	ia.MessageId = MessageId(reqMsg.MessageID)
+	ia.lastMessageId = MessageId(reqMsg.MessageID)
 
 	// send the request
 	sendMessage(ia.conn, reqMsg)
@@ -159,6 +167,23 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 
 }
 
+//  Gracefully shut down observe by sending GET with observe=1
+// This is the responsibility of the client!
+// The interaction will just answer with a NAK to the next notify
+/*
+func (ia *Interaction) sendCancelObserve() {
+	reqMsg := coapmsg.NewMessage()
+
+	reqMsg.Type = coapmsg.NonConfirmable
+	reqMsg.Token = ia.Token()
+	reqMsg.Code = coapmsg.GET
+	reqMsg.Payload = []byte{}
+	reqMsg.SetPath(ia.req.Path())
+	reqMsg.Options().Set(coapmsg.Observe, 1)
+	sendMessage(ia.conn, &reqMsg)
+}*/
+
+// waitForNotify will actively handle notification messages
 func (ia *Interaction) waitForNotify(ctx context.Context) {
 	defer close(ia.NotificationCh)
 	withCancel, cancel := context.WithCancel(ctx)
@@ -180,6 +205,7 @@ func (ia *Interaction) waitForNotify(ctx context.Context) {
 			// TODO: Should we really only send the ACK when the notification is handled?
 			// As it is now, the user might miss a few notifications but can
 			// than still attach to the Next channel in the response
+			log.Info("ia.NotificationCh <- resMsg: send ACK")
 			if resMsg.Type == coapmsg.Confirmable {
 				ack := coapmsg.NewAck(resMsg.MessageID)
 				if err := sendMessage(ia.conn, &ack); err != nil {
@@ -188,7 +214,7 @@ func (ia *Interaction) waitForNotify(ctx context.Context) {
 				}
 			}
 		case <-ctx.Done():
-			log.Info("Stopped observer, request context timed out! Send RST.")
+			log.Info("Stopped observer, request context timed out or canceled! Send RST.")
 			// Even non-confirmable messages can be answered with a RST
 			rst := coapmsg.NewRst(resMsg.MessageID)
 			if err := sendMessage(ia.conn, &rst); err != nil {
@@ -196,8 +222,11 @@ func (ia *Interaction) waitForNotify(ctx context.Context) {
 				return
 			}
 			return
-		case <-time.After(5 * time.Second): // default: Give the app some time to register an handler before send RST
-			log.WithField("Token", ia.token).Warn("No application handler for notification registered. Send RST.")
+		default:
+			// Happens when the NotificationCh is closed aka no client is listening
+			// This is a bit indirect since the transport has another layer to convert
+			// the messages into responses for the client
+			log.WithField("Token", ia.Token()).Error("No handler for notification messages registered. Send RST.")
 			// Even non-confirmable messages can be answered with a RST
 			rst := coapmsg.NewRst(resMsg.MessageID)
 			if err := sendMessage(ia.conn, &rst); err != nil {

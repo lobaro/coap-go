@@ -134,7 +134,7 @@ func (h CoapOptions) Set(key OptionId, value interface{}) error {
 // complex queries, access the map directly.
 func (h CoapOptions) Get(key OptionId) OptionValue {
 	if h == nil {
-		return NilOption
+		return NilOption // h can not be nil?
 	}
 	v := h[key]
 	if len(v) == 0 {
@@ -146,4 +146,11 @@ func (h CoapOptions) Get(key OptionId) OptionValue {
 // Del deletes the values associated with key.
 func (h CoapOptions) Del(key OptionId) {
 	delete(h, key)
+}
+
+// Clear deletes all options.
+func (h CoapOptions) Clear() {
+	for k := range h {
+		delete(h, k)
+	}
 }
