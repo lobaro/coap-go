@@ -53,10 +53,10 @@ func (c *serialConnection) Open() error {
 		return wrapError(err, "Failed to open serial port")
 	}
 
-	c.closed = false
-
+	c.port = port
 	c.reader = slip.NewReader(port)
 	c.writer = slip.NewWriter(port)
+	c.closed = false // Now we can actually send and receive data
 
 	go c.closeAfterDeadline()
 
@@ -69,6 +69,7 @@ func (c *serialConnection) Open() error {
 
 func (c *serialConnection) keepAlive() {
 	for {
+		time.Sleep(30 * time.Second)
 		if c.closed {
 			return
 		}
@@ -79,7 +80,6 @@ func (c *serialConnection) keepAlive() {
 			return
 		}
 
-		time.Sleep(30 * time.Second)
 	}
 }
 
