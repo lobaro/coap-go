@@ -19,7 +19,7 @@ type serialConnection struct {
 	deadline time.Time
 	reader   PacketReader
 	writer   PacketWriter
-	closed   bool
+	open     bool
 
 	// Use reader and writer to interact with the port
 	port *serial.Port
@@ -60,7 +60,7 @@ func (c *serialConnection) Open() error {
 	}
 
 	c.setPort(port)
-	c.closed = false // Now we can actually send and receive data
+	c.open = true // Now we can actually send and receive data
 
 	go c.closeAfterDeadline()
 
@@ -74,7 +74,7 @@ func (c *serialConnection) Open() error {
 func (c *serialConnection) keepAlive() {
 	for {
 		time.Sleep(30 * time.Second)
-		if c.closed {
+		if c.Closed() {
 			return
 		}
 
@@ -113,7 +113,7 @@ func (c *serialConnection) ReadPacket() (p []byte, isPrefix bool, err error) {
 	c.readMu.Lock()
 	defer c.readMu.Unlock()
 
-	if c.closed {
+	if c.Closed() {
 		err = ERR_CONNECTION_CLOSED
 		return
 	}
@@ -130,7 +130,7 @@ func (c *serialConnection) WritePacket(p []byte) (err error) {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 
-	if c.closed {
+	if c.Closed() {
 		err = ERR_CONNECTION_CLOSED
 		return
 	}
@@ -143,7 +143,7 @@ func (c *serialConnection) WritePacket(p []byte) (err error) {
 }
 
 func (c *serialConnection) Close() error {
-	c.closed = true
+	c.open = false
 
 	c.cancelReceiveLoop()
 	if c.port != nil {
@@ -153,14 +153,14 @@ func (c *serialConnection) Close() error {
 }
 
 func (c *serialConnection) Closed() bool {
-	return c.closed
+	return !c.open
 }
 
 func (c *serialConnection) closeAfterDeadline() {
 	for {
 		select {
 		case now := <-time.After(c.deadline.Sub(time.Now())):
-			if c.closed {
+			if c.Closed() {
 				return
 			}
 

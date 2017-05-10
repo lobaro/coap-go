@@ -71,6 +71,10 @@ func (c *UartConnector) Connect(host string) (Connection, error) {
 	// Else open a new connection
 	conn := newSerialConnection(serialCfg)
 	c.connections = append(c.connections, conn)
-	conn.Open()
+	err := conn.Open()
+	if err != nil {
+		return conn, err
+	}
+
 	return conn, nil
 }
