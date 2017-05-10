@@ -28,17 +28,62 @@ type serialConnection struct {
 	writeMu sync.Mutex // Guards the writer
 }
 
+var ERR_CONNECTION_CLOSED = errors.New("Connection is closed")
+
 func (c *serialConnection) Open() error {
 	// TODO: not sure what happens when we reopen a closed connection
 	c.closed = false
 	go c.closeAfterDeadline()
 	go c.startReceiveLoop(context.Background())
+	go c.keepAlive()
+	return nil
+}
+
+func (c *serialConnection) keepAlive() {
+	for {
+		if c.closed {
+			return
+		}
+
+		err := c.reopenSerialPort()
+		if err != nil {
+			log.WithError(err).Error("Failed to reopen serial port")
+			return
+		}
+
+		time.Sleep(30 * time.Second)
+	}
+}
+
+func (c *serialConnection) reopenSerialPort() error {
+	c.readMu.Lock()
+	c.writeMu.Lock()
+	defer c.readMu.Unlock()
+	defer c.writeMu.Unlock()
+
+	log.WithField("port", c.config.Name).Info("Reopen serial port")
+	// Close and reopen serial port
+	c.port.Close()
+
+	var err error
+	c.port, err = openComPort(c.config)
+	if err != nil {
+		c.Close()
+		return err
+	}
+
 	return nil
 }
 
 func (c *serialConnection) ReadPacket() (p []byte, isPrefix bool, err error) {
 	c.readMu.Lock()
 	defer c.readMu.Unlock()
+
+	if c.closed {
+		err = ERR_CONNECTION_CLOSED
+		return
+	}
+
 	p, isPrefix, err = c.reader.ReadPacket()
 	if err == nil && err != io.EOF {
 		c.resetDeadline()
@@ -47,8 +92,15 @@ func (c *serialConnection) ReadPacket() (p []byte, isPrefix bool, err error) {
 }
 
 func (c *serialConnection) WritePacket(p []byte) (err error) {
+
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
+
+	if c.closed {
+		err = ERR_CONNECTION_CLOSED
+		return
+	}
+
 	err = c.writer.WritePacket(p)
 	if err == nil && err != io.EOF {
 		c.resetDeadline()
@@ -109,7 +161,7 @@ func (c *serialConnection) closeAfterDeadline() {
 			if now.Equal(c.deadline) || now.After(c.deadline) {
 				err := c.Close()
 				if err != nil {
-					log.WithError(err).WithField("Port", c.config.Name).Error("Failed to close Serial Port")
+					log.WithError(err).WithField("Port", c.config.Name).Error("Failed to close Serial Port after deadline")
 				} else {
 					log.WithField("Port", c.config.Name).Info("Serial Port closed after deadline")
 				}

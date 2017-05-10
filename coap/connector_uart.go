@@ -73,6 +73,7 @@ func (c *UartConnector) Connect(host string) (*serialConnection, error) {
 	// Else open a new connection
 
 	port, err := openComPort(serialCfg)
+
 	if err != nil {
 		return nil, wrapError(err, "Failed to open serial port")
 	}
