@@ -158,7 +158,11 @@ func (c *Client) Get(url string) (*Response, error) {
 //
 func (c *Client) Observe(url string) (*Response, error) {
 	req, err := NewRequest("GET", url, nil)
-	req.Options.Add(coapmsg.Observe, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	err = req.Options.Add(coapmsg.Observe, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -169,11 +173,15 @@ func (c *Client) Observe(url string) (*Response, error) {
 // about the endpoint related to the given response.
 func (c *Client) CancelObserve(response *Response) (*Response, error) {
 	req, err := NewRequest("GET", response.Request.URL.String(), nil)
-	req.Options.Add(coapmsg.Observe, 1)
-	req.Token = response.Request.Token
 	if err != nil {
 		return nil, err
 	}
+	err = req.Options.Add(coapmsg.Observe, 1)
+	if err != nil {
+		return nil, err
+	}
+	req.Token = response.Request.Token
+
 	return c.Do(req)
 }
 
@@ -190,7 +198,10 @@ func (c *Client) Post(url string, bodyType uint16, body io.Reader) (*Response, e
 	if err != nil {
 		return nil, err
 	}
-	req.Options.Set(coapmsg.ContentFormat, bodyType)
+	err = req.Options.Set(coapmsg.ContentFormat, bodyType)
+	if err != nil {
+		return nil, err
+	}
 	return c.Do(req)
 }
 

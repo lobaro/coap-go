@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/Lobaro/coap-go/coapmsg"
 	"io"
 	"io/ioutil"
 	"net/url"
+
+	"github.com/Lobaro/coap-go/coapmsg"
 )
 
 // A Request represents a CoAP request received by a server
@@ -165,7 +166,10 @@ func (r *Request) WithContext(ctx context.Context) *Request {
 
 func (r *Request) closeBody() {
 	if r.Body != nil {
-		r.Body.Close()
+		err := r.Body.Close()
+		if err != nil {
+			log.WithError(err).Warn("Failed to close request body")
+		}
 	}
 }
 

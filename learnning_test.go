@@ -1,10 +1,11 @@
 package main
 
 import (
-	"testing"
-	"gitlab.com/lobaro/lobaro-coap-go/coapmsg"
-	"gitlab.com/lobaro/lobaro-coap-go/coap"
 	"net"
+	"testing"
+
+	"gitlab.com/lobaro/lobaro-coap-go/coap"
+	"gitlab.com/lobaro/lobaro-coap-go/coapmsg"
 )
 
 func TestSetupSocket(t *testing.T) {
@@ -58,10 +59,10 @@ func TestHandle_Get_NotFound_Request(t *testing.T) {
 	coap.CreateSocket(socketId)
 
 	getMsg := coapmsg.Message{
-		Type: coapmsg.Confirmable,
-		Code: coapmsg.GET,
+		Type:      coapmsg.Confirmable,
+		Code:      coapmsg.GET,
 		MessageID: 1,
-		Payload: []byte("Hello World"),
+		Payload:   []byte("Hello World"),
 	}
 	// TODO: c coap parser does not work without options?
 	getMsg.AddOption(coapmsg.URIPath, "/test")
@@ -99,10 +100,10 @@ func Fail_TestHandle_Confirmable_Get_Found_Request(t *testing.T) {
 	coap.CreateResource("existing", "Some existing endpoint")
 
 	getMsg := coapmsg.Message{
-		Type: coapmsg.Confirmable,
-		Code: coapmsg.GET,
+		Type:      coapmsg.Confirmable,
+		Code:      coapmsg.GET,
 		MessageID: 1,
-		Payload: []byte("Hello World"),
+		Payload:   []byte("Hello World"),
 	}
 	// TODO: c coap parser does not work without options?
 	getMsg.AddOption(coapmsg.URIPath, "/.well-known/core")
@@ -113,7 +114,7 @@ func Fail_TestHandle_Confirmable_Get_Found_Request(t *testing.T) {
 	}
 
 	udpAddr := &net.UDPAddr{
-		IP: net.ParseIP("127.0.0.1"),
+		IP:   net.ParseIP("127.0.0.1"),
 		Port: 5684,
 	}
 	coap.HandleReceivedUdp4Message(socketId, udpAddr, msgBytes)

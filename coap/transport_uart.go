@@ -205,7 +205,9 @@ func buildResponse(req *Request, resMsg *coapmsg.Message) *Response {
 // BuildMessage creates a coap message based on the request
 // Takes care of closing the request body
 func (t *TransportUart) buildRequestMessage(req *Request) (*coapmsg.Message, error) {
-	defer req.Body.Close()
+	defer func() {
+		_ = req.Body.Close() // Closed already, ignore error
+	}()
 	if !ValidMethod(req.Method) {
 		return nil, errors.New(fmt.Sprint("coap: Invalid method: ", req.Method))
 	}
@@ -227,7 +229,14 @@ func (t *TransportUart) buildRequestMessage(req *Request) (*coapmsg.Message, err
 	msg.Options().Del(coapmsg.URIQuery)
 	for _, q := range strings.Split(req.URL.RawQuery, "&") {
 		if q != "" {
-			msg.Options().Add(coapmsg.URIQuery, q)
+			err := msg.Options().Add(coapmsg.URIQuery, q)
+			if err != nil {
+				log.
+					WithError(err).
+					WithField("option", coapmsg.URIQuery).
+					WithField("value", q).
+					Warn("Failed to add option value to request")
+			}
 		}
 	}
 

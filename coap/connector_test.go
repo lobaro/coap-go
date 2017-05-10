@@ -28,14 +28,14 @@ func NewTestConnector() *TestConnector {
 	}
 }
 
-func (c *TestConnector) FakeReceiveData(data []byte) {
-	c.In.WritePacket(data)
+func (c *TestConnector) FakeReceiveData(data []byte) error {
+	return c.In.WritePacket(data)
 }
 
 func (c *TestConnector) FakeReceiveMessage(msg coapmsg.Message) error {
 	p := msg.MustMarshalBinary()
-	c.In.WritePacket(p)
-	return nil
+	err := c.In.WritePacket(p)
+	return err
 }
 
 func (c *TestConnector) WaitForSendMessage(timeout time.Duration) (coapmsg.Message, error) {
@@ -124,7 +124,10 @@ func (c *TestConnector) Connect(host string) (Connection, error) {
 	// needed for testing?
 	// conn.deadline: time.Now().Add(UART_CONNECTION_TIMEOUT),
 
-	conn.Open()
+	err := conn.Open()
+	if err != nil {
+		return conn, err
+	}
 
 	c.conn = conn
 

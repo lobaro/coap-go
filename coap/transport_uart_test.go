@@ -94,7 +94,10 @@ func TestRequestResponsePiggyback(t *testing.T) {
 	testCon := NewTestConnector()
 	trans.Connecter = testCon
 
-	testCon.Connect("ignored")
+	_, err := testCon.Connect("ignored")
+	if err != nil {
+		t.Error()
+	}
 
 	req, err := NewRequest("GET", "coap+uart://any/foo", nil)
 
@@ -119,7 +122,10 @@ func TestRequestResponsePiggyback(t *testing.T) {
 		ack.Code = coapmsg.Content // For piggyback response. Default Empty would be postponed
 		ack.Token = msg.Token
 		ack.Payload = []byte("test")
-		testCon.FakeReceiveMessage(ack)
+		err = testCon.FakeReceiveMessage(ack)
+		if err != nil {
+			t.Error(err)
+		}
 		asyncDoneChan <- true
 	}()
 
@@ -134,7 +140,10 @@ func TestRequestResponsePiggyback(t *testing.T) {
 
 	if res != nil {
 		body := bytes.Buffer{}
-		body.ReadFrom(res.Body)
+		_, err := body.ReadFrom(res.Body)
+		if err != nil {
+			t.Error(err)
+		}
 		t.Logf("Response: [%s] %s", coapmsg.COAPCode(res.StatusCode).String(), body.String())
 		if body.String() != "test" {
 			t.Error("Expected response payload 'test' but got " + body.String())
@@ -184,7 +193,10 @@ func _TestManyParallel(t *testing.T) {
 	trans := NewTransportUart()
 	testCon := NewTestConnector()
 	trans.Connecter = testCon
-	testCon.Connect("ignored")
+	_, err := testCon.Connect("ignored")
+	if err != nil {
+		t.Error(err)
+	}
 
 	for i := 0; i < n; i++ {
 		go func() {
@@ -201,7 +213,10 @@ func TestRequestResponsePostponed(t *testing.T) {
 	trans := NewTransportUart()
 	testCon := NewTestConnector()
 	trans.Connecter = testCon
-	testCon.Connect("ignored")
+	_, err := testCon.Connect("ignored")
+	if err != nil {
+		t.Error(err)
+	}
 	RunRequestResponsePostponed(t, trans)
 }
 
@@ -231,7 +246,10 @@ func RunRequestResponsePostponed(t *testing.T, trans *TransportUart) {
 		// Send ack
 		ack := coapmsg.NewAck(msg.MessageID)
 		ack.Code = coapmsg.Empty // For postponed response.
-		testCon.FakeReceiveMessage(ack)
+		err = testCon.FakeReceiveMessage(ack)
+		if err != nil {
+			t.Error(err)
+		}
 
 		// let some time pass and send response
 		time.Sleep(10 * time.Millisecond)
@@ -241,7 +259,10 @@ func RunRequestResponsePostponed(t *testing.T, trans *TransportUart) {
 		res.Token = msg.Token
 		res.Code = coapmsg.Content
 		res.Payload = []byte("test")
-		testCon.FakeReceiveMessage(res)
+		err = testCon.FakeReceiveMessage(res)
+		if err != nil {
+			t.Error(err)
+		}
 
 		// Expect an acknowledgment for our CON
 		msg, err = testCon.WaitForSendMessage(3 * time.Second)
@@ -270,7 +291,10 @@ func RunRequestResponsePostponed(t *testing.T, trans *TransportUart) {
 
 	if res != nil {
 		body := bytes.Buffer{}
-		body.ReadFrom(res.Body)
+		_, err = body.ReadFrom(res.Body)
+		if err != nil {
+			t.Error(err)
+		}
 		t.Logf("Response: [%s] %s", coapmsg.COAPCode(res.StatusCode).String(), body.String())
 		if body.String() != "test" {
 			t.Error("Expected response payload 'test' but got " + body.String())
@@ -329,7 +353,10 @@ func TestParallelRequests(t *testing.T) {
 		}
 
 		body := bytes.Buffer{}
-		body.ReadFrom(res.Body)
+		_, err = body.ReadFrom(res.Body)
+		if err != nil {
+			t.Error(err)
+		}
 		if body.String() != "test1" {
 			t.Errorf("Expected body %s but was %s", "test1", body.String())
 		}
@@ -352,7 +379,10 @@ func TestParallelRequests(t *testing.T) {
 		}
 
 		body := bytes.Buffer{}
-		body.ReadFrom(res.Body)
+		_, err = body.ReadFrom(res.Body)
+		if err != nil {
+			t.Error(err)
+		}
 		if body.String() != "test2" {
 			t.Errorf("Expected body %s but was %s", "test2", body.String())
 		}
@@ -376,14 +406,20 @@ func TestParallelRequests(t *testing.T) {
 
 		// Confirm Message 1 as postboned
 		ack := coapmsg.NewAck(1)
-		conn.FakeReceiveMessage(ack)
+		err = conn.FakeReceiveMessage(ack)
+		if err != nil {
+			t.Error(err)
+		}
 
 		// Confirm Message 2
 		ack = coapmsg.NewAck(2)
 		ack.Code = coapmsg.Content // For piggyback response. Default Empty would be postponed
 		ack.Token = []byte{2}
 		ack.Payload = []byte("test2")
-		conn.FakeReceiveMessage(ack)
+		err = conn.FakeReceiveMessage(ack)
+		if err != nil {
+			t.Error(err)
+		}
 
 		// Send postponed result for first request
 		ack = coapmsg.NewMessage()
@@ -391,7 +427,10 @@ func TestParallelRequests(t *testing.T) {
 		ack.Code = coapmsg.Content // For piggyback response. Default Empty would be postponed
 		ack.Token = []byte{1}
 		ack.Payload = []byte("test1")
-		conn.FakeReceiveMessage(ack)
+		err = conn.FakeReceiveMessage(ack)
+		if err != nil {
+			t.Error(err)
+		}
 
 		wg.Done()
 	}()
@@ -478,9 +517,15 @@ func TestClientObserve(t *testing.T) {
 		ack.Code = coapmsg.Content // For piggyback response.
 		ack.Token = msg.Token
 		ack.Payload = []byte("1")
-		ack.Options().Add(coapmsg.Observe, 1)
+		err = ack.Options().Add(coapmsg.Observe, 1)
+		if err != nil {
+			t.Error(err)
+		}
 		logrus.Info("Fake Receive ACK")
-		testCon.FakeReceiveMessage(ack)
+		err = testCon.FakeReceiveMessage(ack)
+		if err != nil {
+			t.Error(err)
+		}
 
 		// Wait some time before sending second update
 		time.Sleep(500 * time.Millisecond)
@@ -491,9 +536,15 @@ func TestClientObserve(t *testing.T) {
 		ack.Code = coapmsg.Content // For piggyback response.
 		ack.Token = msg.Token
 		ack.Payload = []byte("2")
-		ack.Options().Add(coapmsg.Observe, 2)
+		err = ack.Options().Add(coapmsg.Observe, 2)
+		if err != nil {
+			t.Error(err)
+		}
 		logrus.Info("Fake Receive CON")
-		testCon.FakeReceiveMessage(ack)
+		err = testCon.FakeReceiveMessage(ack)
+		if err != nil {
+			t.Error(err)
+		}
 
 		// Wait for the ACK of the last CON message
 		msg, err = testCon.WaitForSendMessage(3 * time.Second)
@@ -515,7 +566,10 @@ func TestClientObserve(t *testing.T) {
 		ack = coapmsg.NewAck(msg.MessageID)
 		ack.Token = msg.Token
 		ack.Code = coapmsg.Content
-		testCon.FakeReceiveMessage(ack)
+		err = testCon.FakeReceiveMessage(ack)
+		if err != nil {
+			t.Error(err)
+		}
 
 		asyncDoneChan <- true
 	}()
@@ -527,7 +581,10 @@ func TestClientObserve(t *testing.T) {
 	}
 
 	buf := bytes.Buffer{}
-	buf.ReadFrom(res.Body)
+	_, err = buf.ReadFrom(res.Body)
+	if err != nil {
+		t.Error(err)
+	}
 
 	if buf.String() != "1" {
 		t.Errorf("Expected body '1' but got %s", buf.String())
@@ -541,7 +598,10 @@ func TestClientObserve(t *testing.T) {
 		select {
 		case res = <-res.Next():
 			buf.Reset()
-			buf.ReadFrom(res.Body)
+			_, err := buf.ReadFrom(res.Body)
+			if err != nil {
+				t.Error(err)
+			}
 			if buf.String() != "2" {
 				t.Errorf("Expected body '2' but got %s", buf.String())
 			}
@@ -549,7 +609,10 @@ func TestClientObserve(t *testing.T) {
 
 			time.Sleep(200 * time.Millisecond)
 			t.Log("Canceling the observe")
-			client.CancelObserve(res)
+			_, err = client.CancelObserve(res)
+			if err != nil {
+				t.Error(err)
+			}
 		case <-time.After(3 * time.Second):
 			t.Error("Timeout while waiting for Next")
 		}

@@ -19,7 +19,11 @@ func TestGetRequestFormat(t *testing.T) {
 	tr := &recordingTransport{}
 	client := &Client{Transport: tr}
 	url := "http://dummy.faketld/"
-	client.Get(url) // Note: doesn't hit network
+	_, err := client.Get(url) // Note: doesn't hit network
+	if err != nil {
+		t.Error(err)
+	}
+
 	if tr.req.Method != "GET" {
 		t.Errorf("expected method %q; got %q", "GET", tr.req.Method)
 	}

@@ -80,7 +80,13 @@ func (c *serialConnection) keepAlive() {
 
 		err := c.reopenSerialPort()
 		if err != nil {
-			log.WithError(err).Error("Failed to reopen serial port")
+			log.WithError(err).Error("Failed to reopen serial port. Closing connection.")
+
+			err := c.Close()
+			if err != nil {
+				log.WithError(err).Error("Failed to close connection connection.")
+			}
+
 			return
 		}
 
@@ -95,12 +101,13 @@ func (c *serialConnection) reopenSerialPort() error {
 
 	log.WithField("port", c.config.Name).Info("Reopen serial port")
 	// Close and reopen serial port
-	c.port.Close()
+	err := c.port.Close()
+	if err != nil {
+		return err
+	}
 
-	var err error
 	port, err := openComPort(c.config)
 	if err != nil {
-		c.Close()
 		return err
 	}
 
@@ -142,14 +149,14 @@ func (c *serialConnection) WritePacket(p []byte) (err error) {
 	return
 }
 
-func (c *serialConnection) Close() error {
+func (c *serialConnection) Close() (err error) {
 	c.open = false
 
 	c.cancelReceiveLoop()
 	if c.port != nil {
-		return c.port.Close()
+		err = c.port.Close()
 	}
-	return nil
+	return
 }
 
 func (c *serialConnection) Closed() bool {
