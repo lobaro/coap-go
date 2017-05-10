@@ -24,6 +24,8 @@ type serialConnection struct {
 	// Use reader and writer to interact with the port
 	port *serial.Port
 
+	cancelReceiveLoop context.CancelFunc
+
 	readMu  sync.Mutex // Guards the reader
 	writeMu sync.Mutex // Guards the writer
 }
@@ -34,7 +36,10 @@ func (c *serialConnection) Open() error {
 	// TODO: not sure what happens when we reopen a closed connection
 	c.closed = false
 	go c.closeAfterDeadline()
-	go c.startReceiveLoop(context.Background())
+
+	receiveLoopCtx, cancelReceiveLoop := context.WithCancel(context.Background())
+	c.cancelReceiveLoop = cancelReceiveLoop
+	go c.startReceiveLoop(receiveLoopCtx)
 	go c.keepAlive()
 	return nil
 }
@@ -110,6 +115,8 @@ func (c *serialConnection) WritePacket(p []byte) (err error) {
 
 func (c *serialConnection) Close() error {
 	c.closed = true
+
+	c.cancelReceiveLoop()
 	if c.port != nil {
 		return c.port.Close()
 	}
@@ -240,12 +247,17 @@ func openComPort(serialCfg *serial.Config) (port *serial.Port, err error) {
 func (c *serialConnection) startReceiveLoop(ctx context.Context) {
 	for {
 		//log.Info("Receive loop")
+		if ctx.Err() {
+			log.WithError(ctx.Err()).Info("Context done. Stopped receive loop.")
+			return
+		}
 		msg, err := readMessage(ctx, c)
 
 		if err != nil {
-			log.WithError(err).Error("Failed to receive message - closing connection")
-			c.Close()
-			return
+			// Do not close the connection, this might happen during reopening of the serial port
+			log.WithError(err).Warn("Failed to receive message")
+			time.Sleep(500 * time.Millisecond)
+			continue
 		}
 
 		ia := c.FindInteraction(Token(msg.Token), MessageId(msg.MessageID))
