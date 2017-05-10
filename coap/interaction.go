@@ -31,7 +31,39 @@ type Interaction struct {
 	NotificationCh chan *coapmsg.Message
 }
 
-type Interactions []*Interaction
+type Interactions struct {
+	interactions []*Interaction
+}
+
+func (ias *Interactions) AddInteraction(ia *Interaction) {
+	ias.interactions = append(ias.interactions, ia)
+}
+
+func (ias *Interactions) RemoveInteraction(interaction *Interaction) {
+	for i, ia := range ias.interactions {
+		if ia == interaction {
+			copy(ias.interactions[i:], ias.interactions[i+1:])
+			ias.interactions[len(ias.interactions)-1] = nil // or the zero value of T
+			ias.interactions = ias.interactions[:len(ias.interactions)-1]
+			return
+		}
+	}
+}
+
+func (ias *Interactions) FindInteraction(token Token, msgId MessageId) *Interaction {
+	for _, ia := range ias.interactions {
+		if ia.Token().Equals(token) {
+			return ia
+		}
+		// For empty tokens the message Id must match
+		// An ACK is sent by the server to confirm a CON but carries no token
+		// TODO: Check also message type?
+		if len(token) == 0 && ia.lastMessageId == msgId {
+			return ia
+		}
+	}
+	return nil
+}
 
 func (ia *Interaction) Token() Token {
 	return ia.req.Token

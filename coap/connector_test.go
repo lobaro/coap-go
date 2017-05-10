@@ -18,7 +18,7 @@ type TestConnector struct {
 
 	In   *PacketBuffer
 	Out  *PacketBuffer
-	conn *serialConnection
+	conn *TestConnection
 }
 
 func NewTestConnector() *TestConnector {
@@ -113,23 +113,16 @@ func (rw *PacketBuffer) Len() int {
 	return len(rw.packets)
 }
 
-func (c *TestConnector) Connect(host string) (*serialConnection, error) {
+func (c *TestConnector) Connect(host string) (Connection, error) {
 
 	if c.conn != nil {
 		return c.conn, nil
 	}
 
-	conn := &serialConnection{
-		config: nil,
-		port:   nil,
-		/*
-			reader:   slip.NewReader(c.ReceiveBuf),
-			writer:   slip.NewWriter(c.SendBuf),
-		*/
-		reader:   c.In,
-		writer:   c.Out,
-		deadline: time.Now().Add(UART_CONNECTION_TIMEOUT),
-	}
+	conn := NewTestConnection(c.In, c.Out)
+
+	// needed for testing?
+	// conn.deadline: time.Now().Add(UART_CONNECTION_TIMEOUT),
 
 	conn.Open()
 

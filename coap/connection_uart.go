@@ -9,17 +9,17 @@ import (
 
 	"io"
 
-	"github.com/Lobaro/coap-go/coapmsg"
+	"github.com/Lobaro/slip"
 	"github.com/tarm/serial"
 )
 
 type serialConnection struct {
-	config       *serial.Config
-	deadline     time.Time
-	reader       PacketReader
-	writer       PacketWriter
-	closed       bool
-	interactions Interactions
+	Interactions
+	config   *serial.Config
+	deadline time.Time
+	reader   PacketReader
+	writer   PacketWriter
+	closed   bool
 
 	// Use reader and writer to interact with the port
 	port *serial.Port
@@ -32,14 +32,37 @@ type serialConnection struct {
 
 var ERR_CONNECTION_CLOSED = errors.New("Connection is closed")
 
+func newSerialConnection(config *serial.Config) *serialConnection {
+	if config == nil {
+		panic("serial config must not be nil")
+	}
+	return &serialConnection{
+		config: config,
+	}
+}
+
 func (c *serialConnection) Open() error {
 	// TODO: not sure what happens when we reopen a closed connection
+
+	c.deadline = time.Now().Add(UART_CONNECTION_TIMEOUT)
+
+	log.WithField("port", c.config.Name).WithField("baud", c.config.Baud).Info("Opening serial port ...")
+	port, err := openComPort(c.config)
+
+	if err != nil {
+		return wrapError(err, "Failed to open serial port")
+	}
+
 	c.closed = false
+
+	c.reader = slip.NewReader(port)
+	c.writer = slip.NewWriter(port)
+
 	go c.closeAfterDeadline()
 
 	receiveLoopCtx, cancelReceiveLoop := context.WithCancel(context.Background())
 	c.cancelReceiveLoop = cancelReceiveLoop
-	go c.startReceiveLoop(receiveLoopCtx)
+	go receiveLoop(receiveLoopCtx, c)
 	go c.keepAlive()
 	return nil
 }
@@ -127,36 +150,6 @@ func (c *serialConnection) Closed() bool {
 	return c.closed
 }
 
-func (c *serialConnection) AddInteraction(ia *Interaction) {
-	c.interactions = append(c.interactions, ia)
-}
-
-func (c *serialConnection) RemoveInteraction(interaction *Interaction) {
-	for i, ia := range c.interactions {
-		if ia == interaction {
-			copy(c.interactions[i:], c.interactions[i+1:])
-			c.interactions[len(c.interactions)-1] = nil // or the zero value of T
-			c.interactions = c.interactions[:len(c.interactions)-1]
-			return
-		}
-	}
-}
-
-func (c *serialConnection) FindInteraction(token Token, msgId MessageId) *Interaction {
-	for _, ia := range c.interactions {
-		if ia.Token().Equals(token) {
-			return ia
-		}
-		// For empty tokens the message Id must match
-		// An ACK is sent by the server to confirm a CON but carries no token
-		// TODO: Check also message type?
-		if len(token) == 0 && ia.lastMessageId == msgId {
-			return ia
-		}
-	}
-	return nil
-}
-
 func (c *serialConnection) closeAfterDeadline() {
 	for {
 		select {
@@ -242,39 +235,4 @@ func openComPort(serialCfg *serial.Config) (port *serial.Port, err error) {
 	}
 	port, err = serial.OpenPort(serialCfg)
 	return
-}
-
-func (c *serialConnection) startReceiveLoop(ctx context.Context) {
-	for {
-		//log.Info("Receive loop")
-		if ctx.Err() != nil {
-			log.WithError(ctx.Err()).Info("Context done. Stopped receive loop.")
-			return
-		}
-		msg, err := readMessage(ctx, c)
-
-		if err != nil {
-			// Do not close the connection, this might happen during reopening of the serial port
-			log.WithError(err).Warn("Failed to receive message")
-			time.Sleep(500 * time.Millisecond)
-			continue
-		}
-
-		ia := c.FindInteraction(Token(msg.Token), MessageId(msg.MessageID))
-		if ia == nil {
-			log.WithError(err).
-				WithField("token", msg.Token).
-				WithField("messageId", msg.MessageID).
-				Warn("Failed to find interaction, send RST and drop packet")
-
-			// Even non-confirmable messages can be answered with a RST
-			rst := coapmsg.NewRst(msg.MessageID)
-			if err := sendMessage(c, &rst); err != nil {
-				log.WithError(err).Warn("Failed to send RST")
-			}
-		} else {
-			ia.HandleMessage(msg)
-		}
-
-	}
 }

@@ -17,17 +17,20 @@ import (
 type Connection interface {
 	PacketReader
 	PacketWriter
+	InteractionStore
 
 	// Starts a loop that reads packets and forwards them to interactions
-	FindInteraction(token Token, msgId MessageId) *Interaction
-	AddInteraction(ia *Interaction)
-	RemoveInteraction(ia *Interaction)
-
 	Open() error
 	Close() error
 	Closed() bool
 
-	resetDeadline()
+	//resetDeadline()
+}
+
+type InteractionStore interface {
+	FindInteraction(token Token, msgId MessageId) *Interaction
+	AddInteraction(ia *Interaction)
+	RemoveInteraction(ia *Interaction)
 }
 
 // Implemented by connections
@@ -38,6 +41,9 @@ type PacketReader interface {
 // Implemented by connections
 type PacketWriter interface {
 	WritePacket(p []byte) (err error)
+}
+
+type incomingPacketHandler struct {
 }
 
 func deleteConnection(a []Connection, i int) []Connection {
@@ -56,6 +62,41 @@ func sendMessage(conn Connection, msg *coapmsg.Message) error {
 		return err
 	}
 	return nil
+}
+
+func receiveLoop(ctx context.Context, c Connection) {
+	for {
+		//log.Info("Receive loop")
+		if ctx.Err() != nil {
+			log.WithError(ctx.Err()).Info("Context done. Stopped receive loop.")
+			return
+		}
+		msg, err := readMessage(ctx, c)
+
+		if err != nil {
+			// Do not close the connection, this might happen during reopening of the serial port
+			log.WithError(err).Warn("Failed to receive message")
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+
+		ia := c.FindInteraction(Token(msg.Token), MessageId(msg.MessageID))
+		if ia == nil {
+			log.WithError(err).
+				WithField("token", msg.Token).
+				WithField("messageId", msg.MessageID).
+				Warn("Failed to find interaction, send RST and drop packet")
+
+			// Even non-confirmable messages can be answered with a RST
+			rst := coapmsg.NewRst(msg.MessageID)
+			if err := sendMessage(c, &rst); err != nil {
+				log.WithError(err).Warn("Failed to send RST")
+			}
+		} else {
+			ia.HandleMessage(msg)
+		}
+
+	}
 }
 
 func readMessage(ctx context.Context, conn Connection) (*coapmsg.Message, error) {

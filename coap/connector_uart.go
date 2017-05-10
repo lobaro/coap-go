@@ -4,8 +4,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Lobaro/slip"
-	"github.com/Sirupsen/logrus"
 	"github.com/tarm/serial"
 )
 
@@ -44,7 +42,7 @@ func (c *UartConnector) newSerialConfig() *serial.Config {
 	}
 }
 
-func (c *UartConnector) Connect(host string) (*serialConnection, error) {
+func (c *UartConnector) Connect(host string) (Connection, error) {
 	c.connectMutex.Lock()
 	defer c.connectMutex.Unlock()
 
@@ -71,20 +69,7 @@ func (c *UartConnector) Connect(host string) (*serialConnection, error) {
 	}
 
 	// Else open a new connection
-
-	port, err := openComPort(serialCfg)
-
-	if err != nil {
-		return nil, wrapError(err, "Failed to open serial port")
-	}
-	logrus.WithField("port", serialCfg.Name).WithField("baud", serialCfg.Baud).Info("Opening serial port ...")
-	conn := &serialConnection{
-		config:   serialCfg,
-		port:     port,
-		reader:   slip.NewReader(port),
-		writer:   slip.NewWriter(port),
-		deadline: time.Now().Add(UART_CONNECTION_TIMEOUT),
-	}
+	conn := newSerialConnection(serialCfg)
 	c.connections = append(c.connections, conn)
 	conn.Open()
 	return conn, nil

@@ -106,7 +106,7 @@ func TestRequestResponsePiggyback(t *testing.T) {
 	asyncDoneChan := make(chan bool)
 	go func() {
 		// Check outgoing message
-		msg, err := testCon.WaitForSendMessage(3 * time.Second)
+		msg, err := testCon.WaitForSendMessage(5 * time.Second)
 		if err != nil {
 			t.Error(err)
 		}
@@ -124,7 +124,7 @@ func TestRequestResponsePiggyback(t *testing.T) {
 	}()
 
 	// Shorter timeout
-	ctxWithTimeout, _ := context.WithTimeout(req.Context(), time.Second)
+	ctxWithTimeout, _ := context.WithTimeout(req.Context(), 5*time.Second)
 	req = req.WithContext(ctxWithTimeout)
 	res, err := trans.RoundTrip(req)
 
