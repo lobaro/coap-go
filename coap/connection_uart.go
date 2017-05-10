@@ -41,6 +41,12 @@ func newSerialConnection(config *serial.Config) *serialConnection {
 	}
 }
 
+func (c *serialConnection) setPort(port *serial.Port) {
+	c.port = port
+	c.reader = slip.NewReader(port)
+	c.writer = slip.NewWriter(port)
+}
+
 func (c *serialConnection) Open() error {
 	// TODO: not sure what happens when we reopen a closed connection
 
@@ -53,9 +59,7 @@ func (c *serialConnection) Open() error {
 		return wrapError(err, "Failed to open serial port")
 	}
 
-	c.port = port
-	c.reader = slip.NewReader(port)
-	c.writer = slip.NewWriter(port)
+	c.setPort(port)
 	c.closed = false // Now we can actually send and receive data
 
 	go c.closeAfterDeadline()
@@ -94,11 +98,13 @@ func (c *serialConnection) reopenSerialPort() error {
 	c.port.Close()
 
 	var err error
-	c.port, err = openComPort(c.config)
+	port, err := openComPort(c.config)
 	if err != nil {
 		c.Close()
 		return err
 	}
+
+	c.setPort(port)
 
 	return nil
 }
