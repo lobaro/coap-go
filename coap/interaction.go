@@ -69,7 +69,10 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 	ia.lastMessageId = MessageId(reqMsg.MessageID)
 
 	// send the request
-	sendMessage(ia.conn, reqMsg)
+	err = sendMessage(ia.conn, reqMsg)
+	if err != nil {
+		return nil, wrapError(err, "Failed to send message")
+	}
 
 	if reqMsg.Type == coapmsg.Confirmable {
 		// Handle CON request

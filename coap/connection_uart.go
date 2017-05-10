@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"io"
+
 	"github.com/Lobaro/coap-go/coapmsg"
 	"github.com/tarm/serial"
 )
@@ -38,7 +40,9 @@ func (c *serialConnection) ReadPacket() (p []byte, isPrefix bool, err error) {
 	c.readMu.Lock()
 	defer c.readMu.Unlock()
 	p, isPrefix, err = c.reader.ReadPacket()
-	c.resetDeadline()
+	if err == nil && err != io.EOF {
+		c.resetDeadline()
+	}
 	return
 }
 
@@ -46,7 +50,9 @@ func (c *serialConnection) WritePacket(p []byte) (err error) {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 	err = c.writer.WritePacket(p)
-	c.resetDeadline()
+	if err == nil && err != io.EOF {
+		c.resetDeadline()
+	}
 	return
 }
 
