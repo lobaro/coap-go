@@ -20,7 +20,7 @@ func TestGetRequestFormat(t *testing.T) {
 	client := &Client{Transport: tr}
 	url := "http://dummy.faketld/"
 	_, err := client.Get(url) // Note: doesn't hit network
-	if err != nil {
+	if err != nil && err.Error() != "dummy impl" {
 		t.Error(err)
 	}
 
