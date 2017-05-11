@@ -125,9 +125,12 @@ func (c *serialConnection) ReadPacket() (p []byte, isPrefix bool, err error) {
 		return
 	}
 
-	log.Info("Flush on ReadPacket")
-	c.port.Flush()
 	p, isPrefix, err = c.reader.ReadPacket()
+
+	if !isPrefix {
+		log.Info("Flush on ReadPacket")
+		c.port.Flush()
+	}
 
 	if err == nil && err != io.EOF {
 		c.resetDeadline()
