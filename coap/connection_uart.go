@@ -151,8 +151,7 @@ func (c *serialConnection) WritePacket(p []byte) (err error) {
 		return
 	}
 
-	log.Info("Flush on WritePacket")
-	err = c.port.Flush()
+	// We must NOT flush before writing, since it would cancel ongoing receiving at least on windows
 	if err != nil {
 		return
 	}
