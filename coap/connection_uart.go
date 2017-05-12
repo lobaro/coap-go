@@ -129,7 +129,10 @@ func (c *serialConnection) ReadPacket() (p []byte, isPrefix bool, err error) {
 
 	if !isPrefix {
 		log.Info("Flush on ReadPacket")
-		c.port.Flush()
+		err = c.port.Flush()
+		if err != nil {
+			return
+		}
 	}
 
 	if err == nil && err != io.EOF {
@@ -149,7 +152,10 @@ func (c *serialConnection) WritePacket(p []byte) (err error) {
 	}
 
 	log.Info("Flush on WritePacket")
-	c.port.Flush()
+	err = c.port.Flush()
+	if err != nil {
+		return
+	}
 	err = c.writer.WritePacket(p)
 
 	if err == nil && err != io.EOF {
@@ -256,6 +262,13 @@ func openComPort(serialCfg *serial.Config) (port *serial.Port, err error) {
 		return
 	}
 	port, err = serial.OpenPort(serialCfg)
-	port.Flush()
+	if err != nil {
+		return nil, err
+	}
+
+	err = port.Flush()
+	if err != nil {
+		return nil, err
+	}
 	return
 }
