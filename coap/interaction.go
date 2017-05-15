@@ -85,8 +85,8 @@ func (ia *Interaction) Close() {
 	logrus.WithField("token", ia.Token()).Info("Closing interaction")
 	ia.closed = true
 
-	if ia.NotificationCh != nil {
-		close(ia.NotificationCh)
+	if ia.StopListenForNotifications != nil {
+		ia.StopListenForNotifications()
 	}
 
 	if ia.receiveCh != nil {
