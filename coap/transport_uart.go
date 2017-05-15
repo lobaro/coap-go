@@ -136,9 +136,14 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	}
 
 	resMsg, err := ia.RoundTrip(req.Context(), reqMsg)
+
+	defer func() {
+		if !ia.IsObserving() {
+			ia.Close()
+		}
+	}()
+
 	if err != nil {
-		ia.Close()
-		conn.RemoveInteraction(ia)
 		return nil, wrapError(err, fmt.Sprint("Failed Interaction Roundtrip with Token ", ia.Token()))
 	}
 
@@ -152,13 +157,9 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	// TODO: I do not like that we need 2 go routines (1 here and one inside the interaction) for handling notifies
 	// An observe request must set the observe option to 0
 	// the server has to response with the observe option set to != 0
-	if reqMsg.Options().Get(coapmsg.Observe).AsUInt8() == 0 && resMsg.Options().Get(coapmsg.Observe).IsSet() {
+	if ia.IsObserving() {
 		// TODO: We should get the info from the interaction if it is required to listen for notifications
 		go handleInteractionNotifyMessage(ia, req, res)
-		// TODO: When is a notification interaction removed???
-	} else {
-		ia.Close()
-		conn.RemoveInteraction(ia)
 	}
 
 	return res, nil
@@ -181,6 +182,7 @@ func startInteraction(conn Connection, reqMsg *coapmsg.Message) *Interaction {
 func handleInteractionNotifyMessage(ia *Interaction, req *Request, currResponse *Response) {
 
 	defer close(currResponse.next)
+	defer ia.Close() // Close the interaction when the observe ends
 
 	select {
 	case resMsg, ok := <-ia.NotificationCh:

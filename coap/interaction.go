@@ -85,9 +85,15 @@ func (ia *Interaction) Close() {
 	logrus.WithField("token", ia.Token()).Info("Closing interaction")
 	ia.closed = true
 
+	if ia.NotificationCh != nil {
+		close(ia.NotificationCh)
+	}
+
 	if ia.receiveCh != nil {
 		close(ia.receiveCh)
 	}
+
+	ia.conn.RemoveInteraction(ia)
 }
 
 func (ia *Interaction) HandleMessage(msg *coapmsg.Message) {
@@ -115,6 +121,10 @@ func (ia *Interaction) readMessage(ctx context.Context) (*coapmsg.Message, error
 	case <-ctx.Done():
 		return nil, READ_MESSAGE_CTX_DONE
 	}
+}
+
+func (ia *Interaction) IsObserving() bool {
+	return ia.NotificationCh != nil
 }
 
 var ERROR_READ_ACK = "Failed to read ACK"
@@ -232,15 +242,12 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 	}
 
 	// Handle observe
-	ia.NotificationCh = make(chan *coapmsg.Message, 0)
 
 	// An observe request must set the observe option to 0
 	// the server has to response with the observe option set
 	if reqMsg.Options().Get(coapmsg.Observe).AsUInt8() == 0 && resMsg.Options().Get(coapmsg.Observe).IsSet() {
-		// TODO: Save some state on interaction that it is still "alive" oder "waitingForNotify"?
+		ia.NotificationCh = make(chan *coapmsg.Message, 0)
 		go ia.waitForNotify(ctx)
-	} else {
-		close(ia.NotificationCh)
 	}
 
 	if err = validateToken(reqMsg, resMsg); err != nil {
@@ -268,7 +275,10 @@ func (ia *Interaction) sendCancelObserve() {
 
 // waitForNotify will actively handle notification messages
 func (ia *Interaction) waitForNotify(ctx context.Context) {
-	defer close(ia.NotificationCh)
+	defer func() {
+		close(ia.NotificationCh)
+		ia.NotificationCh = nil
+	}()
 	withCancel, cancel := context.WithCancel(ctx)
 
 	logWithToken := log.WithField("token", ia.Token())

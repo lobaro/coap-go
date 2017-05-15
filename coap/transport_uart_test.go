@@ -609,6 +609,7 @@ func TestClientObserve(t *testing.T) {
 
 			time.Sleep(200 * time.Millisecond)
 			t.Log("Canceling the observe")
+			logrus.Info("Canceling the observe")
 			_, err = client.CancelObserve(res)
 			if err != nil {
 				t.Error(err)
