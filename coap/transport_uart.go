@@ -131,8 +131,14 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 		ia = startInteraction(conn, reqMsg)
 	}
 
+	if ia.receiveCh == nil {
+		log.Error("Interaction receiveCh is nil!!!") // TODO: REMOVE ME
+	}
+
 	resMsg, err := ia.RoundTrip(req.Context(), reqMsg)
 	if err != nil {
+		ia.Close()
+		conn.RemoveInteraction(ia)
 		return nil, wrapError(err, fmt.Sprint("Failed Interaction Roundtrip with Token ", ia.Token()))
 	}
 
@@ -147,7 +153,11 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	// An observe request must set the observe option to 0
 	// the server has to response with the observe option set to != 0
 	if reqMsg.Options().Get(coapmsg.Observe).AsUInt8() == 0 && resMsg.Options().Get(coapmsg.Observe).IsSet() {
+		// TODO: We should get the info from the interaction if it is required to listen for notifications
 		go handleInteractionNotifyMessage(ia, req, res)
+	} else {
+		ia.Close()
+		conn.RemoveInteraction(ia)
 	}
 
 	return res, nil

@@ -52,8 +52,12 @@ func (c *serialConnection) Open() error {
 
 	c.deadline = time.Now().Add(UART_CONNECTION_TIMEOUT)
 
-	log.WithField("port", c.config.Name).WithField("baud", c.config.Baud).Info("Opening serial port ...")
+	oldName := c.config.Name
 	port, err := openComPort(c.config)
+	log.WithField("originalPort", oldName).
+		WithField("port", c.config.Name).
+		WithField("baud", c.config.Baud).
+		Info("Opening serial port ...")
 
 	if err != nil {
 		return wrapError(err, "Failed to open serial port")
@@ -84,7 +88,7 @@ func (c *serialConnection) keepAlive() {
 
 			err := c.Close()
 			if err != nil {
-				log.WithError(err).Error("Failed to close connection connection.")
+				log.WithError(err).Error("Failed to close connection.")
 			}
 
 			return

@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 
+	"time"
+
 	"github.com/Lobaro/coap-go/coapmsg"
 )
 
@@ -69,15 +71,36 @@ func (ia *Interaction) Token() Token {
 	return ia.req.Token
 }
 
+func (ia *Interaction) Close() {
+	if ia.NotificationCh != nil {
+		close(ia.NotificationCh)
+	}
+	if ia.receiveCh != nil {
+		close(ia.receiveCh)
+	}
+}
+
 func (ia *Interaction) HandleMessage(msg *coapmsg.Message) {
-	ia.receiveCh <- msg
+	log.Info("Interaction handle message...")
+	select {
+	case ia.receiveCh <- msg:
+	case <-time.After(3 * time.Second):
+		// TODO: We should avoid this. find the reason why it happens and maybe buffer the channel
+		log.Error("Interaction did not handled incomming message. Discarding.")
+	}
+	log.Info("Interaction handle message. DONE.")
+
 }
 
 var READ_MESSAGE_CTX_DONE = errors.New("Read timeout")
+var READ_MESSAGE_CHAN_CLOSED = errors.New("Receive channel closed")
 
 func (ia *Interaction) readMessage(ctx context.Context) (*coapmsg.Message, error) {
 	select {
-	case msg := <-ia.receiveCh:
+	case msg, ok := <-ia.receiveCh:
+		if !ok {
+			return msg, READ_MESSAGE_CHAN_CLOSED
+		}
 		return msg, nil
 	case <-ctx.Done():
 		return nil, READ_MESSAGE_CTX_DONE
@@ -201,6 +224,7 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 	// An observe request must set the observe option to 0
 	// the server has to response with the observe option set
 	if reqMsg.Options().Get(coapmsg.Observe).AsUInt8() == 0 && resMsg.Options().Get(coapmsg.Observe).IsSet() {
+		// TODO: Save some state on interaction that it is still "alive" oder "waitingForNotify"?
 		go ia.waitForNotify(ctx)
 	} else {
 		close(ia.NotificationCh)
@@ -321,7 +345,7 @@ func (ia *Interaction) waitForNotify(ctx context.Context) {
 func validateMessageId(req, res *coapmsg.Message) error {
 	if req.MessageID != res.MessageID {
 		// This should never happen
-		err := errors.New("coap: CRITICAL - MessageId of response does not match")
+		err := errors.New("coap: MessageId of response does not match")
 		log.WithError(err).
 			WithField("ReqMessageId", req.MessageID).
 			WithField("ResMessageId", res.MessageID).
