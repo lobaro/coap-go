@@ -155,6 +155,7 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	if reqMsg.Options().Get(coapmsg.Observe).AsUInt8() == 0 && resMsg.Options().Get(coapmsg.Observe).IsSet() {
 		// TODO: We should get the info from the interaction if it is required to listen for notifications
 		go handleInteractionNotifyMessage(ia, req, res)
+		// TODO: When is a notification interaction removed???
 	} else {
 		ia.Close()
 		conn.RemoveInteraction(ia)

@@ -7,7 +7,10 @@ import (
 
 	"time"
 
+	"sync"
+
 	"github.com/Lobaro/coap-go/coapmsg"
+	"github.com/Sirupsen/logrus"
 )
 
 type Token []byte
@@ -31,6 +34,9 @@ type Interaction struct {
 	// Channel to hand over raw coap messages from notification updates
 	// to the underlying transport where they can be converted into response structs
 	NotificationCh chan *coapmsg.Message
+
+	closed      bool
+	roundTripMu sync.Mutex
 }
 
 type Interactions struct {
@@ -72,9 +78,13 @@ func (ia *Interaction) Token() Token {
 }
 
 func (ia *Interaction) Close() {
-	if ia.NotificationCh != nil {
-		close(ia.NotificationCh)
+	if ia.closed {
+		logrus.WithField("token", ia.Token()).Warn("Interaction already closed")
+		return
 	}
+	logrus.WithField("token", ia.Token()).Info("Closing interaction")
+	ia.closed = true
+
 	if ia.receiveCh != nil {
 		close(ia.receiveCh)
 	}
@@ -110,6 +120,9 @@ func (ia *Interaction) readMessage(ctx context.Context) (*coapmsg.Message, error
 var ERROR_READ_ACK = "Failed to read ACK"
 
 func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (resMsg *coapmsg.Message, err error) {
+	ia.roundTripMu.Lock()
+	defer ia.roundTripMu.Unlock()
+
 	// A new round trip on an existing interaction can only work when we are not listening
 	// for notifications. Else the notifications eats up all responses from the server.
 	// One of the few reason to do this is to cancel an observe anyway
@@ -228,7 +241,6 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 		go ia.waitForNotify(ctx)
 	} else {
 		close(ia.NotificationCh)
-		ia.conn.RemoveInteraction(ia)
 	}
 
 	if err = validateToken(reqMsg, resMsg); err != nil {
