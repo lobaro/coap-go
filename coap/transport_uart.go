@@ -182,7 +182,6 @@ func startInteraction(conn Connection, reqMsg *coapmsg.Message) *Interaction {
 func handleInteractionNotifyMessage(ia *Interaction, req *Request, currResponse *Response) {
 
 	defer close(currResponse.next)
-	defer ia.Close() // Close the interaction when the observe ends
 
 	select {
 	case resMsg, ok := <-ia.NotificationCh:
@@ -194,12 +193,13 @@ func handleInteractionNotifyMessage(ia *Interaction, req *Request, currResponse 
 				go handleInteractionNotifyMessage(ia, req, res)
 			case <-time.After(5 * time.Second): // Give some time for the client to handle res.Next()
 				log.WithField("Token", ia.Token()).Warn("No app handler for notification response registered. Stop listen for notifications.")
-				ia.StopListenForNotifications()
+				ia.Close()
 			}
 
 		} else {
 			// Also happens for all non observe requests since ia.NotificationCh will be closed.
 			log.Info("Stopped observer, no more notifies expected.")
+			ia.Close()
 		}
 	}
 }
