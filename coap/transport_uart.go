@@ -183,6 +183,10 @@ func handleInteractionNotifyMessage(ia *Interaction, req *Request, currResponse 
 
 	defer close(currResponse.next)
 
+	// TODO: There is no timeout for the NotificationCh
+	// this puts all responsibility to stop the observe to the client
+	// we should consider some big default timeout (e.g. 5 minutes) to close the interaction
+	// when nothing is received
 	select {
 	case resMsg, ok := <-ia.NotificationCh:
 		if ok {
