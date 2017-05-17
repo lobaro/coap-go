@@ -82,7 +82,7 @@ func (ia *Interaction) Close() {
 		logrus.WithField("token", ia.Token()).Warn("Interaction already closed")
 		return
 	}
-	logrus.WithField("token", ia.Token()).Info("Closing interaction")
+	log.WithField("token", ia.Token()).Info("Closing interaction")
 	ia.closed = true
 
 	if ia.StopListenForNotifications != nil {
