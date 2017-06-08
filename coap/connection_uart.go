@@ -9,21 +9,20 @@ import (
 	"io"
 
 	"github.com/Lobaro/slip"
-	"github.com/tarm/serial"
-	testserial "go.bug.st/serial.v1"
-
+	"go.bug.st/serial.v1"
 )
 
 type serialConnection struct {
 	Interactions
-	config   *serial.Config
+	mode     *serial.Mode
+	portName string
 	deadline time.Time
 	reader   PacketReader
 	writer   PacketWriter
 	open     bool
 
 	// Use reader and writer to interact with the port
-	port testserial.Port
+	port serial.Port
 
 	cancelReceiveLoop context.CancelFunc
 
@@ -33,16 +32,17 @@ type serialConnection struct {
 
 var ERR_CONNECTION_CLOSED = errors.New("Connection is closed")
 
-func newSerialConnection(config *serial.Config) *serialConnection {
-	if config == nil {
+func newSerialConnection(portName string, mode *serial.Mode) *serialConnection {
+	if mode == nil {
 		panic("serial config must not be nil")
 	}
 	return &serialConnection{
-		config: config,
+		portName: portName,
+		mode:     mode,
 	}
 }
 
-func (c *serialConnection) setPort(port testserial.Port) {
+func (c *serialConnection) setPort(port serial.Port) {
 	c.port = port
 	c.reader = slip.NewReader(port)
 	c.writer = slip.NewWriter(port)
@@ -53,11 +53,12 @@ func (c *serialConnection) Open() error {
 
 	c.deadline = time.Now().Add(UART_CONNECTION_TIMEOUT)
 
-	oldName := c.config.Name
-	port, err := openComPort(c.config)
+	oldName := c.portName
+	port, newPortName, err := openComPort(c.portName, c.mode)
+	c.portName = newPortName
 	log.WithField("originalPort", oldName).
-		WithField("port", c.config.Name).
-		WithField("baud", c.config.Baud).
+		WithField("port", c.portName).
+		WithField("baud", c.mode.BaudRate).
 		Info("Opening serial port ...")
 
 	if err != nil {
@@ -104,14 +105,14 @@ func (c *serialConnection) reopenSerialPort() error {
 	defer c.readMu.Unlock()
 	defer c.writeMu.Unlock()
 
-	log.WithField("port", c.config.Name).Info("Reopen serial port")
+	log.WithField("port", c.portName).Info("Reopen serial port")
 	// Close and reopen serial port
 	err := c.port.Close()
 	if err != nil {
 		return err
 	}
 
-	port, err := openComPort(c.config)
+	port, _, err := openComPort(c.portName, c.mode)
 	if err != nil {
 		return err
 	}
@@ -193,9 +194,9 @@ func (c *serialConnection) closeAfterDeadline() {
 			if now.Equal(c.deadline) || now.After(c.deadline) {
 				err := c.Close()
 				if err != nil {
-					log.WithError(err).WithField("Port", c.config.Name).Error("Failed to close Serial Port after deadline")
+					log.WithError(err).WithField("Port", c.portName).Error("Failed to close Serial Port after deadline")
 				} else {
-					log.WithField("Port", c.config.Name).Info("Serial Port closed after deadline")
+					log.WithField("Port", c.portName).Info("Serial Port closed after deadline")
 				}
 				return
 			}
@@ -210,8 +211,10 @@ func (c *serialConnection) resetDeadline() {
 // Last successful "any" port. Will be tried first before iterating
 var lastAny = ""
 
-// Does change the config in case on Name == "any"
-func openComPort(serialCfg *serial.Config) (port testserial.Port, err error) {
+// When portName is "any" the first available port is opened
+// the new port name is returned as newPortName
+func openComPort(portName string, mode *serial.Mode) (port serial.Port, newPortName string, err error) {
+	// Search for serial port. Not needed for bugst/serial
 	//
 	// if serialCfg.Name == "any" {
 	// 	if lastAny != "" {
@@ -265,11 +268,21 @@ func openComPort(serialCfg *serial.Config) (port testserial.Port, err error) {
 	// 	err = errors.New(fmt.Sprint("coap: Failed to find usable serial port: ", err.Error()))
 	// 	return
 	// }
-	port, err = testserial.Open(serialCfg.Name, &testserial.Mode{BaudRate: serialCfg.Baud})
-	if err != nil {
-		return nil, err
+	if portName == "any" {
+		portNames, err := serial.GetPortsList()
+		if err != nil {
+			return nil, portName, err
+		}
+
+		if len(portNames) > 0 {
+			portName = portNames[0]
+		}
 	}
 
+	port, err = serial.Open(portName, mode)
+	if err != nil {
+		return nil, portName, err
+	}
 	// err = port.Flush()
 	// if err != nil {
 	// 	return nil, err

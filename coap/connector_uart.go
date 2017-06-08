@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tarm/serial"
+	"go.bug.st/serial.v1"
 )
 
 type UartConnector struct {
@@ -25,20 +25,48 @@ func NewUartConnecter() *UartConnector {
 		connections:  make([]Connection, 0),
 		Baud:         115200,
 		Parity:       ParityNone,
-		Size:         0,
-		ReadTimeout:  time.Millisecond * 500,
+		Size:         0,                      // TODO: Unused?
+		ReadTimeout:  time.Millisecond * 500, // TODO: Unused?
 		StopBits:     Stop1,
 	}
 }
 
-func (c *UartConnector) newSerialConfig() *serial.Config {
-	return &serial.Config{
-		Name:        "",
-		Baud:        c.Baud,
-		Parity:      serial.Parity(c.Parity),
-		Size:        c.Size,
-		ReadTimeout: c.ReadTimeout,
-		StopBits:    serial.StopBits(c.StopBits),
+func serialStopBits(bits StopBits) serial.StopBits {
+	switch bits {
+	case Stop1:
+		return serial.OneStopBit
+	case Stop1Half:
+		return serial.OnePointFiveStopBits
+	case Stop2:
+		return serial.TwoStopBits
+	}
+	log.Warnf("Unknown stop bit option %v, using default: OneStopBit", bits)
+	return serial.OneStopBit
+}
+
+func serialParity(parity Parity) serial.Parity {
+	switch parity {
+	case ParityNone:
+		return serial.NoParity
+	case ParityOdd:
+		return serial.OddParity
+	case ParityEven:
+		return serial.EvenParity
+	case ParityMark:
+		return serial.MarkParity
+	case ParitySpace:
+		return serial.SpaceParity
+	}
+	log.Warnf("Unknown parity option %v, using default: NoParity", parity)
+	return serial.NoParity
+}
+
+func (c *UartConnector) newSerialMode() *serial.Mode {
+	return &serial.Mode{
+		BaudRate: c.Baud,
+		Parity:   serialParity(c.Parity),
+		StopBits: serialStopBits(c.StopBits),
+		DataBits: 8,
 	}
 }
 
@@ -46,13 +74,14 @@ func (c *UartConnector) Connect(host string) (Connection, error) {
 	c.connectMutex.Lock()
 	defer c.connectMutex.Unlock()
 
-	serialCfg := c.newSerialConfig()
+	serialMode := c.newSerialMode()
+	portName := ""
 	if host == "any" {
-		serialCfg.Name = host
+		portName = host
 	} else if !isWindows() {
-		serialCfg.Name = "/dev/" + host
+		portName = "/dev/" + host
 	} else {
-		serialCfg.Name = host
+		portName = host
 	}
 
 	// can recycle connection?
@@ -62,15 +91,15 @@ func (c *UartConnector) Connect(host string) (Connection, error) {
 			continue
 		}
 
-		if c, ok := con.(*serialConnection); (ok && c.config.Name == serialCfg.Name) || serialCfg.Name == "any" {
+		if c, ok := con.(*serialConnection); (ok && c.portName == portName) || portName == "any" {
 			// TODO: Should we force a reopen or flush here? It already happened that we received old garbage.
-			log.WithField("Port", c.config.Name).Info("Reuseing Serial Port")
+			log.WithField("Port", c.portName).Info("Reuseing Serial Port")
 			return c, nil
 		}
 	}
 
 	// Else open a new connection
-	conn := newSerialConnection(serialCfg)
+	conn := newSerialConnection(portName, serialMode)
 	c.connections = append(c.connections, conn)
 	err := conn.Open()
 	if err != nil {
