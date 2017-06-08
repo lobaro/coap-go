@@ -56,7 +56,7 @@ func (c *serialConnection) Open() error {
 		Info("Opening serial port ...")
 
 	if err != nil {
-		return wrapError(err, "Failed to open serial port")
+		return wrapError(err, "Failed to open serial port "+newPortName)
 	}
 
 	c.setPort(port)
