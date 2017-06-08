@@ -3,7 +3,6 @@ package coap
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -11,6 +10,8 @@ import (
 
 	"github.com/Lobaro/slip"
 	"github.com/tarm/serial"
+	testserial "go.bug.st/serial.v1"
+
 )
 
 type serialConnection struct {
@@ -22,7 +23,7 @@ type serialConnection struct {
 	open     bool
 
 	// Use reader and writer to interact with the port
-	port *serial.Port
+	port testserial.Port
 
 	cancelReceiveLoop context.CancelFunc
 
@@ -41,7 +42,7 @@ func newSerialConnection(config *serial.Config) *serialConnection {
 	}
 }
 
-func (c *serialConnection) setPort(port *serial.Port) {
+func (c *serialConnection) setPort(port testserial.Port) {
 	c.port = port
 	c.reader = slip.NewReader(port)
 	c.writer = slip.NewWriter(port)
@@ -131,13 +132,13 @@ func (c *serialConnection) ReadPacket() (p []byte, isPrefix bool, err error) {
 
 	p, isPrefix, err = c.reader.ReadPacket()
 
-	if !isPrefix {
-		log.Info("Flush on ReadPacket")
-		err = c.port.Flush()
-		if err != nil {
-			return
-		}
-	}
+	// if !isPrefix {
+	// 	log.Info("Flush on ReadPacket")
+	// 	err = c.port.Flush()
+	// 	if err != nil {
+	// 		return
+	// 	}
+	// }
 
 	if err == nil && err != io.EOF {
 		c.resetDeadline()
@@ -210,68 +211,68 @@ func (c *serialConnection) resetDeadline() {
 var lastAny = ""
 
 // Does change the config in case on Name == "any"
-func openComPort(serialCfg *serial.Config) (port *serial.Port, err error) {
-
-	if serialCfg.Name == "any" {
-		if lastAny != "" {
-			serialCfg.Name = lastAny
-			port, err = serial.OpenPort(serialCfg)
-			if err == nil {
-				return
-			}
-		}
-		if isWindows() {
-			for i := 0; i < 99; i++ {
-				serialCfg.Name = fmt.Sprintf("COM%d", i)
-				port, err = serial.OpenPort(serialCfg)
-				if err == nil {
-					lastAny = serialCfg.Name
-					//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
-					return
-				}
-
-			}
-		} else {
-			for i := 0; i < 99; i++ {
-				serialCfg.Name = fmt.Sprintf("/dev/tty%d", i)
-				port, err = serial.OpenPort(serialCfg)
-				if err == nil {
-					lastAny = serialCfg.Name
-					//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
-					return
-				}
-			}
-			for i := 0; i < 99; i++ {
-				serialCfg.Name = fmt.Sprintf("/dev/ttyS%d", i)
-				port, err = serial.OpenPort(serialCfg)
-				if err == nil {
-					lastAny = serialCfg.Name
-					//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
-					return
-				}
-			}
-			for i := 0; i < 10; i++ {
-				serialCfg.Name = fmt.Sprintf("/dev/ttyUSB%d", i)
-				port, err = serial.OpenPort(serialCfg)
-				if err == nil {
-					lastAny = serialCfg.Name
-					//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
-					return
-				}
-			}
-		}
-
-		err = errors.New(fmt.Sprint("coap: Failed to find usable serial port: ", err.Error()))
-		return
-	}
-	port, err = serial.OpenPort(serialCfg)
+func openComPort(serialCfg *serial.Config) (port testserial.Port, err error) {
+	//
+	// if serialCfg.Name == "any" {
+	// 	if lastAny != "" {
+	// 		serialCfg.Name = lastAny
+	// 		port, err = serial.OpenPort(serialCfg)
+	// 		if err == nil {
+	// 			return
+	// 		}
+	// 	}
+	// 	if isWindows() {
+	// 		for i := 0; i < 99; i++ {
+	// 			serialCfg.Name = fmt.Sprintf("COM%d", i)
+	// 			port, err = serial.OpenPort(serialCfg)
+	// 			if err == nil {
+	// 				lastAny = serialCfg.Name
+	// 				//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
+	// 				return
+	// 			}
+	//
+	// 		}
+	// 	} else {
+	// 		for i := 0; i < 99; i++ {
+	// 			serialCfg.Name = fmt.Sprintf("/dev/tty%d", i)
+	// 			port, err = serial.OpenPort(serialCfg)
+	// 			if err == nil {
+	// 				lastAny = serialCfg.Name
+	// 				//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
+	// 				return
+	// 			}
+	// 		}
+	// 		for i := 0; i < 99; i++ {
+	// 			serialCfg.Name = fmt.Sprintf("/dev/ttyS%d", i)
+	// 			port, err = serial.OpenPort(serialCfg)
+	// 			if err == nil {
+	// 				lastAny = serialCfg.Name
+	// 				//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
+	// 				return
+	// 			}
+	// 		}
+	// 		for i := 0; i < 10; i++ {
+	// 			serialCfg.Name = fmt.Sprintf("/dev/ttyUSB%d", i)
+	// 			port, err = serial.OpenPort(serialCfg)
+	// 			if err == nil {
+	// 				lastAny = serialCfg.Name
+	// 				//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
+	// 				return
+	// 			}
+	// 		}
+	// 	}
+	//
+	// 	err = errors.New(fmt.Sprint("coap: Failed to find usable serial port: ", err.Error()))
+	// 	return
+	// }
+	port, err = testserial.Open(serialCfg.Name, &testserial.Mode{BaudRate: serialCfg.Baud})
 	if err != nil {
 		return nil, err
 	}
 
-	err = port.Flush()
-	if err != nil {
-		return nil, err
-	}
+	// err = port.Flush()
+	// if err != nil {
+	// 	return nil, err
+	// }
 	return
 }
