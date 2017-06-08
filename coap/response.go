@@ -4,7 +4,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/Lobaro/coap-go/coapmsg"
+	"github.com/trusch/coap-go/coapmsg"
 )
 
 // Maximum length of an observe due to the RFC
