@@ -6,8 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"io"
-
 	"github.com/Lobaro/slip"
 	"go.bug.st/serial.v1"
 )
@@ -16,7 +14,6 @@ type serialConnection struct {
 	Interactions
 	mode     *serial.Mode
 	portName string
-	deadline time.Time
 	reader   PacketReader
 	writer   PacketWriter
 	open     bool
@@ -50,9 +47,6 @@ func (c *serialConnection) setPort(port serial.Port) {
 
 func (c *serialConnection) Open() error {
 	// TODO: not sure what happens when we reopen a closed connection
-
-	c.deadline = time.Now().Add(UART_CONNECTION_TIMEOUT)
-
 	oldName := c.portName
 	port, newPortName, err := openComPort(c.portName, c.mode)
 	c.portName = newPortName
@@ -68,8 +62,6 @@ func (c *serialConnection) Open() error {
 	c.setPort(port)
 	c.open = true // Now we can actually send and receive data
 
-	go c.closeAfterDeadline()
-
 	receiveLoopCtx, cancelReceiveLoop := context.WithCancel(context.Background())
 	c.cancelReceiveLoop = cancelReceiveLoop
 	go receiveLoop(receiveLoopCtx, c)
@@ -81,6 +73,7 @@ func (c *serialConnection) keepAlive() {
 	for {
 		time.Sleep(30 * time.Second)
 		if c.Closed() {
+			log.Info("Serial port closed. Stop keep alive.")
 			return
 		}
 
@@ -141,9 +134,6 @@ func (c *serialConnection) ReadPacket() (p []byte, isPrefix bool, err error) {
 	// 	}
 	// }
 
-	if err == nil && err != io.EOF {
-		c.resetDeadline()
-	}
 	return
 }
 
@@ -163,9 +153,6 @@ func (c *serialConnection) WritePacket(p []byte) (err error) {
 	}
 	err = c.writer.WritePacket(p)
 
-	if err == nil && err != io.EOF {
-		c.resetDeadline()
-	}
 	return
 }
 
@@ -181,31 +168,6 @@ func (c *serialConnection) Close() (err error) {
 
 func (c *serialConnection) Closed() bool {
 	return !c.open
-}
-
-func (c *serialConnection) closeAfterDeadline() {
-	for {
-		select {
-		case now := <-time.After(c.deadline.Sub(time.Now())):
-			if c.Closed() {
-				return
-			}
-
-			if now.Equal(c.deadline) || now.After(c.deadline) {
-				err := c.Close()
-				if err != nil {
-					log.WithError(err).WithField("Port", c.portName).Error("Failed to close Serial Port after deadline")
-				} else {
-					log.WithField("Port", c.portName).Info("Serial Port closed after deadline")
-				}
-				return
-			}
-		}
-	}
-}
-
-func (c *serialConnection) resetDeadline() {
-	c.deadline = time.Now().Add(UART_CONNECTION_TIMEOUT)
 }
 
 // Last successful "any" port. Will be tried first before iterating
@@ -275,13 +237,15 @@ func openComPort(portName string, mode *serial.Mode) (port serial.Port, newPortN
 		}
 
 		if len(portNames) > 0 {
-			portName = portNames[0]
+			newPortName = portNames[0]
 		}
+	} else {
+		newPortName = portName
 	}
 
-	port, err = serial.Open(portName, mode)
+	port, err = serial.Open(newPortName, mode)
 	if err != nil {
-		return nil, portName, err
+		return nil, newPortName, err
 	}
 	// err = port.Flush()
 	// if err != nil {

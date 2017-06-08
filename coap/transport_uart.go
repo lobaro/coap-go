@@ -34,9 +34,6 @@ const (
 
 const UartScheme = "coap+uart"
 
-// Timeout to close a serial com port when no data is received
-const UART_CONNECTION_TIMEOUT = 1 * time.Minute
-
 // Transport uses a Serial port to communicate via UART (e.g. RS232)
 // All Serial parameters can be set on the transport
 // The host of the request URL specifies the serial connection, e.g. COM3

@@ -64,14 +64,14 @@ func sendMessage(conn Connection, msg *coapmsg.Message) error {
 	return nil
 }
 
-func receiveLoop(ctx context.Context, c Connection) {
+func receiveLoop(ctx context.Context, conn Connection) {
 	for {
 		//log.Info("Receive loop")
 		if ctx.Err() != nil {
 			log.WithError(ctx.Err()).Info("Context done. Stopped receive loop.")
 			return
 		}
-		msg, err := readMessage(ctx, c)
+		msg, err := readMessage(ctx, conn)
 
 		if err != nil {
 			// Do not close the connection, this might happen during reopening of the serial port
@@ -82,7 +82,7 @@ func receiveLoop(ctx context.Context, c Connection) {
 			continue
 		}
 
-		ia := c.FindInteraction(Token(msg.Token), MessageId(msg.MessageID))
+		ia := conn.FindInteraction(Token(msg.Token), MessageId(msg.MessageID))
 		if ia == nil {
 			log.WithError(err).
 				WithField("token", msg.Token).
@@ -91,7 +91,7 @@ func receiveLoop(ctx context.Context, c Connection) {
 
 			// Even non-confirmable messages can be answered with a RST
 			rst := coapmsg.NewRst(msg.MessageID)
-			if err := sendMessage(c, &rst); err != nil {
+			if err := sendMessage(conn, &rst); err != nil {
 				log.WithError(err).Warn("Failed to send RST")
 			}
 		} else {
@@ -101,8 +101,8 @@ func receiveLoop(ctx context.Context, c Connection) {
 	}
 }
 
-func readMessage(ctx context.Context, conn Connection) (*coapmsg.Message, error) {
-	packet, err := readPacket(ctx, conn)
+func readMessage(ctx context.Context, reader PacketReader) (*coapmsg.Message, error) {
+	packet, err := readPacket(ctx, reader)
 
 	if err != nil {
 		return nil, err
