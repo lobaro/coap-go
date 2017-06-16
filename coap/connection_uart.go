@@ -93,17 +93,20 @@ func (c *serialConnection) keepAlive() {
 }
 
 func (c *serialConnection) reopenSerialPort() error {
-	c.readMu.Lock()
+	//c.readMu.Lock()
 	c.writeMu.Lock()
-	defer c.readMu.Unlock()
+	//defer c.readMu.Unlock()
 	defer c.writeMu.Unlock()
 
 	log.WithField("port", c.portName).Info("Reopen serial port")
 	// Close and reopen serial port
 	err := c.port.Close()
 	if err != nil {
-		return err
+		return wrapError(err, "Failed to close serial port")
 	}
+	c.port = nil
+	time.Sleep(50 * time.Millisecond)
+	log.WithField("port", c.portName).Info("Port closed.")
 
 	port, _, err := openComPort(c.portName, c.mode)
 	if err != nil {
