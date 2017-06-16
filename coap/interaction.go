@@ -82,7 +82,7 @@ func (ia *Interaction) Close() {
 		logrus.WithField("token", ia.Token()).Warn("Interaction already closed")
 		return
 	}
-	log.WithField("token", ia.Token()).Info("Closing interaction")
+	log.WithField("token", ia.Token()).Debug("Closing interaction")
 	ia.closed = true
 
 	if ia.StopListenForNotifications != nil {
@@ -97,14 +97,14 @@ func (ia *Interaction) Close() {
 }
 
 func (ia *Interaction) HandleMessage(msg *coapmsg.Message) {
-	log.Info("Interaction handle message...")
+	log.Debug("Interaction handle message...")
 	select {
 	case ia.receiveCh <- msg:
 	case <-time.After(3 * time.Second):
 		// TODO: We should avoid this. find the reason why it happens and maybe buffer the channel
 		log.Error("Interaction did not handled incomming message. Discarding.")
 	}
-	log.Info("Interaction handle message. DONE.")
+	log.Debug("Interaction handle message. DONE.")
 
 }
 

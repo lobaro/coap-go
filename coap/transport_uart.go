@@ -81,7 +81,7 @@ func msgLogEntry(msg *coapmsg.Message) *logrus.Entry {
 }
 
 func logMsg(msg *coapmsg.Message, info string) {
-	msgLogEntry(msg).Info("CoAP message: " + info)
+	msgLogEntry(msg).Debug("CoAP message: " + info)
 }
 
 func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
@@ -169,7 +169,7 @@ func startInteraction(conn Connection, reqMsg *coapmsg.Message) *Interaction {
 		receiveCh: make(chan *coapmsg.Message, 0),
 	}
 
-	log.WithField("Token", ia.Token()).Info("Start interaction")
+	log.WithField("Token", ia.Token()).Debug("Start interaction")
 
 	conn.AddInteraction(ia)
 

@@ -269,7 +269,7 @@ func send(ireq *Request, rt RoundTripper, deadline time.Time) (*Response, error)
 	if err != nil {
 		stopTimer()
 		if resp != nil {
-			log.Printf("RoundTripper returned a response & error; ignoring response")
+			log.WithError(err).Error("RoundTripper returned a response & error; ignoring response")
 		}
 		return nil, err
 	}
