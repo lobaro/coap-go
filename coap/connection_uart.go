@@ -10,6 +10,8 @@ import (
 	"go.bug.st/serial.v1"
 )
 
+var UartKeepAliveInterval = 30 * time.Second
+
 type serialConnection struct {
 	Interactions
 	mode     *serial.Mode
@@ -71,7 +73,12 @@ func (c *serialConnection) Open() error {
 
 func (c *serialConnection) keepAlive() {
 	for {
-		time.Sleep(30 * time.Second)
+		if UartKeepAliveInterval == 0 {
+			time.Sleep(10 * time.Second)
+			continue
+		}
+
+		time.Sleep(UartKeepAliveInterval)
 		if c.Closed() {
 			log.Info("Serial port closed. Stop keep alive.")
 			return
