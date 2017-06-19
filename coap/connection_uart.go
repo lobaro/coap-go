@@ -114,12 +114,14 @@ func (c *serialConnection) reopenSerialPort() error {
 	c.port = nil
 	// Need to wait a short period before reopening the port. Else it fails.
 	time.Sleep(50 * time.Millisecond)
-	log.WithField("port", c.portName).Info("Port closed.")
+	log.WithField("port", c.portName).Debug("Port closed.")
 
 	port, _, err := openComPort(c.portName, c.mode)
 	if err != nil {
 		return err
 	}
+
+	log.WithField("port", c.portName).Debug("Port opened.")
 
 	c.setPort(port)
 
@@ -265,7 +267,7 @@ func openComPort(portName string, mode *serial.Mode) (port serial.Port, newPortN
 		if time.Since(start) > time.Second {
 			return
 		}
-		//log.WithError(err).Debug("Failed to open serial port")
+		log.WithError(err).Debug("Failed to open serial port")
 		time.Sleep(10 * time.Millisecond)
 	}
 
