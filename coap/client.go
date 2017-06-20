@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Lobaro/coap-go/coapmsg"
+	"github.com/trusch/coap-go/coapmsg"
 	"github.com/Sirupsen/logrus"
 )
 

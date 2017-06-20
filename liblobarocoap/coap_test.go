@@ -1,7 +1,7 @@
 package liblobarocoap
 
 import (
-	"github.com/Lobaro/coap-go/coapmsg"
+	"github.com/trusch/coap-go/coapmsg"
 	"testing"
 	"time"
 )

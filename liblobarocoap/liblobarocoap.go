@@ -29,7 +29,7 @@ import "C"
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/Lobaro/coap-go/coapmsg"
+	"github.com/trusch/coap-go/coapmsg"
 	"github.com/Sirupsen/logrus"
 	"log"
 	"net"

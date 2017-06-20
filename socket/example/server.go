@@ -1,7 +1,7 @@
 package main
 
 import (
-		"github.com/lobaro/coap-go/socket"
+		"github.com/trusch/coap-go/socket"
 		"fmt"
 		"os"
 		"strconv"
