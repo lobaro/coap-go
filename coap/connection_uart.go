@@ -6,11 +6,21 @@ import (
 	"sync"
 	"time"
 
+	"io"
+
 	"github.com/Lobaro/slip"
 	"go.bug.st/serial.v1"
 )
 
 var UartKeepAliveInterval = 30 * time.Second
+
+type serialPort interface {
+	io.Reader
+	io.Writer
+	io.Closer
+	ResetInputBuffer() error
+	ResetOutputBuffer() error
+}
 
 type serialConnection struct {
 	Interactions
@@ -21,7 +31,7 @@ type serialConnection struct {
 	open     bool
 
 	// Use reader and writer to interact with the port
-	port serial.Port
+	port serialPort
 
 	cancelReceiveLoop context.CancelFunc
 
@@ -139,13 +149,18 @@ func (c *serialConnection) ReadPacket() (p []byte, isPrefix bool, err error) {
 
 	p, isPrefix, err = c.reader.ReadPacket()
 
-	// if !isPrefix {
-	// 	log.Info("Flush on ReadPacket")
-	// 	err = c.port.Flush()
-	// 	if err != nil {
-	// 		return
-	// 	}
-	// }
+	if !isPrefix {
+		log.Info("Flush on ReadPacket")
+		err = c.port.ResetInputBuffer()
+		//err = c.port.Flush()
+		if err != nil {
+			return
+		}
+		err = c.port.ResetOutputBuffer()
+		if err != nil {
+			return
+		}
+	}
 
 	return
 }
@@ -271,9 +286,14 @@ func openComPort(portName string, mode *serial.Mode) (port serial.Port, newPortN
 		time.Sleep(10 * time.Millisecond)
 	}
 
+	err = port.ResetInputBuffer()
+	if err != nil {
+		return
+	}
+	err = port.ResetOutputBuffer()
+	if err != nil {
+		return
+	}
 	// err = port.Flush()
-	// if err != nil {
-	// 	return nil, err
-	// }
 	return
 }
