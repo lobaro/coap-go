@@ -3,23 +3,31 @@ package coap
 import (
 	"context"
 	"errors"
+	"io"
 	"sync"
 	"time"
 
-	"io"
+	serial "go.bug.st/serial.v1"
 
 	"github.com/Lobaro/slip"
-	"go.bug.st/serial.v1"
 )
 
 var UartKeepAliveInterval = 30 * time.Second
 
-type serialPort interface {
+type SerialPort interface {
 	io.Reader
 	io.Writer
 	io.Closer
 	ResetInputBuffer() error
 	ResetOutputBuffer() error
+}
+
+// TODO: Use this struct instead of the bug.st one
+type SerialMode struct {
+	BaudRate int      // The serial port bitrate (aka Baudrate)
+	DataBits int      // Size of the character (must be 5, 6, 7 or 8)
+	Parity   Parity   // Parity (see Parity type for more info)
+	StopBits StopBits // Stop bits (see StopBits type for more info)
 }
 
 type serialConnection struct {
@@ -31,7 +39,7 @@ type serialConnection struct {
 	open     bool
 
 	// Use reader and writer to interact with the port
-	port serialPort
+	port SerialPort
 
 	cancelReceiveLoop context.CancelFunc
 
@@ -51,7 +59,7 @@ func newSerialConnection(portName string, mode *serial.Mode) *serialConnection {
 	}
 }
 
-func (c *serialConnection) setPort(port serial.Port) {
+func (c *serialConnection) setPort(port SerialPort) {
 	c.port = port
 	c.reader = slip.NewReader(port)
 	c.writer = slip.NewWriter(port)
@@ -203,7 +211,7 @@ var lastAny = ""
 
 // When portName is "any" the first available port is opened
 // the new port name is returned as newPortName
-func openComPort(portName string, mode *serial.Mode) (port serial.Port, newPortName string, err error) {
+func openComPort(portName string, mode *serial.Mode) (port SerialPort, newPortName string, err error) {
 	// Search for serial port. Not needed for bugst/serial
 	//
 	// if serialCfg.Name == "any" {
