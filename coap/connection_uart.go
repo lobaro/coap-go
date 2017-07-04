@@ -209,6 +209,16 @@ func (c *serialConnection) Closed() bool {
 // Last successful "any" port. Will be tried first before iterating
 var lastAny = ""
 
+func checkComPort(portName string, mode *serial.Mode) bool {
+	port, err := serial.Open(portName, mode)
+	if err != nil {
+		return false
+	} else {
+		port.Close()
+		return true
+	}
+}
+
 // When portName is "any" the first available port is opened
 // the new port name is returned as newPortName
 func openComPort(portName string, mode *serial.Mode) (port SerialPort, newPortName string, err error) {
@@ -272,8 +282,13 @@ func openComPort(portName string, mode *serial.Mode) (port SerialPort, newPortNa
 			return nil, portName, err
 		}
 
-		if len(portNames) > 0 {
-			newPortName = portNames[0]
+		for _, p := range portNames {
+			if checkComPort(p, mode) {
+				newPortName = p
+				break
+			} else {
+				log.WithField("port", p).Info("Failed to use serial port")
+			}
 		}
 	} else {
 		newPortName = portName
