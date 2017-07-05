@@ -9,10 +9,21 @@ import (
 
 	serial "go.bug.st/serial.v1"
 
+	"fmt"
+
+	"strings"
+
 	"github.com/Lobaro/slip"
 )
 
+// UartKeepAliveInterval defines how often the serial port is reopened.
+// Set to 0 to disable reopening.
 var UartKeepAliveInterval = 30 * time.Second
+
+// UartUseSlipMux can be set to true to use SlipMux instead of SLIP
+var UartUseSlipMux = false
+
+var UartFlushOnRead = false
 
 type SerialPort interface {
 	io.Reader
@@ -51,7 +62,7 @@ var ERR_CONNECTION_CLOSED = errors.New("Connection is closed")
 
 func newSerialConnection(portName string, mode *serial.Mode) *serialConnection {
 	if mode == nil {
-		panic("serial config must not be nil")
+		panic("mode must not be nil")
 	}
 	return &serialConnection{
 		portName: portName,
@@ -61,8 +72,14 @@ func newSerialConnection(portName string, mode *serial.Mode) *serialConnection {
 
 func (c *serialConnection) setPort(port SerialPort) {
 	c.port = port
-	c.reader = slip.NewReader(port)
-	c.writer = slip.NewWriter(port)
+	if UartUseSlipMux {
+		c.reader = NewSlipMuxReader(port)
+		c.writer = NewSlipMuxWriter(port)
+	} else {
+		c.reader = slip.NewReader(port)
+		c.writer = slip.NewWriter(port)
+	}
+
 }
 
 func (c *serialConnection) Open() error {
@@ -76,7 +93,7 @@ func (c *serialConnection) Open() error {
 		Info("Opening serial port ...")
 
 	if err != nil {
-		return wrapError(err, "Failed to open serial port "+newPortName)
+		return wrapError(err, strings.TrimSpace("Failed to open serial port "+newPortName))
 	}
 
 	c.setPort(port)
@@ -157,10 +174,9 @@ func (c *serialConnection) ReadPacket() (p []byte, isPrefix bool, err error) {
 
 	p, isPrefix, err = c.reader.ReadPacket()
 
-	if !isPrefix {
-		log.Info("Flush on ReadPacket")
+	if !isPrefix && UartFlushOnRead {
+		log.Debug("Flush on ReadPacket")
 		err = c.port.ResetInputBuffer()
-		//err = c.port.Flush()
 		if err != nil {
 			return
 		}
@@ -219,63 +235,31 @@ func checkComPort(portName string, mode *serial.Mode) bool {
 	}
 }
 
+// portlist generates a list of possible serial port names
+func portlist() []string {
+	ports := make([]string, 0)
+
+	if isWindows() {
+		for i := 0; i < 99; i++ {
+			ports = append(ports, fmt.Sprintf("COM%d", i))
+		}
+	} else {
+		for i := 0; i < 10; i++ {
+			ports = append(ports, fmt.Sprintf("/dev/ttyUSB%d", i))
+		}
+		for i := 0; i < 99; i++ {
+			ports = append(ports, fmt.Sprintf("/dev/tty%d", i))
+		}
+		for i := 0; i < 99; i++ {
+			ports = append(ports, fmt.Sprintf("/dev/ttyS%d", i))
+		}
+	}
+	return ports
+}
+
 // When portName is "any" the first available port is opened
 // the new port name is returned as newPortName
 func openComPort(portName string, mode *serial.Mode) (port SerialPort, newPortName string, err error) {
-	// Search for serial port. Not needed for bugst/serial
-	//
-	// if serialCfg.Name == "any" {
-	// 	if lastAny != "" {
-	// 		serialCfg.Name = lastAny
-	// 		port, err = serial.OpenPort(serialCfg)
-	// 		if err == nil {
-	// 			return
-	// 		}
-	// 	}
-	// 	if isWindows() {
-	// 		for i := 0; i < 99; i++ {
-	// 			serialCfg.Name = fmt.Sprintf("COM%d", i)
-	// 			port, err = serial.OpenPort(serialCfg)
-	// 			if err == nil {
-	// 				lastAny = serialCfg.Name
-	// 				//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
-	// 				return
-	// 			}
-	//
-	// 		}
-	// 	} else {
-	// 		for i := 0; i < 99; i++ {
-	// 			serialCfg.Name = fmt.Sprintf("/dev/tty%d", i)
-	// 			port, err = serial.OpenPort(serialCfg)
-	// 			if err == nil {
-	// 				lastAny = serialCfg.Name
-	// 				//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
-	// 				return
-	// 			}
-	// 		}
-	// 		for i := 0; i < 99; i++ {
-	// 			serialCfg.Name = fmt.Sprintf("/dev/ttyS%d", i)
-	// 			port, err = serial.OpenPort(serialCfg)
-	// 			if err == nil {
-	// 				lastAny = serialCfg.Name
-	// 				//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
-	// 				return
-	// 			}
-	// 		}
-	// 		for i := 0; i < 10; i++ {
-	// 			serialCfg.Name = fmt.Sprintf("/dev/ttyUSB%d", i)
-	// 			port, err = serial.OpenPort(serialCfg)
-	// 			if err == nil {
-	// 				lastAny = serialCfg.Name
-	// 				//logrus.WithField("comport", serialCfg.Name).Info("Resolved host 'any'")
-	// 				return
-	// 			}
-	// 		}
-	// 	}
-	//
-	// 	err = errors.New(fmt.Sprint("coap: Failed to find usable serial port: ", err.Error()))
-	// 	return
-	// }
 	if portName == "any" {
 		portNames, err := serial.GetPortsList()
 		if err != nil {
@@ -292,6 +276,10 @@ func openComPort(portName string, mode *serial.Mode) (port SerialPort, newPortNa
 		}
 	} else {
 		newPortName = portName
+	}
+
+	if newPortName == "" {
+		return nil, newPortName, errors.New("No usable serial port found")
 	}
 
 	start := time.Now()

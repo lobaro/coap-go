@@ -103,7 +103,12 @@ func receiveLoop(ctx context.Context, conn Connection) {
 }
 
 func readMessage(ctx context.Context, reader PacketReader) (*coapmsg.Message, error) {
-	packet, err := readPacket(ctx, reader)
+	var packet []byte
+	var err error
+	// Skip empty packets
+	for ; len(packet) == 0; packet, err = readPacket(ctx, reader) {
+
+	}
 
 	if err != nil {
 		return nil, err
