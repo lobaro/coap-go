@@ -8,6 +8,8 @@ import (
 	"github.com/Lobaro/slip"
 )
 
+var SlipMuxLogDiagnostic bool
+
 type SlipMuxReader struct {
 	r *slip.SlipMuxReader
 }
@@ -28,7 +30,9 @@ func (r *SlipMuxReader) ReadPacket() ([]byte, bool, error) {
 	packet, frame, err := r.r.ReadPacket()
 
 	if frame == slip.FRAME_DIAGNOSTIC {
-		log.WithField("message", strings.TrimSpace(string(packet))).Info("SlipMux Diagnostic")
+		if SlipMuxLogDiagnostic {
+			log.WithField("message", strings.TrimSpace(string(packet))).Debug("SlipMux Diagnostic")
+		}
 		return nil, false, nil
 	}
 
