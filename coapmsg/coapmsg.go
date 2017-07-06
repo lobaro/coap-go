@@ -207,7 +207,7 @@ func (m Message) IsConfirmable() bool {
 func (m Message) Path() []string {
 	var path []string
 	if pathOpts, ok := m.options[URIPath]; ok {
-		for _, o := range pathOpts {
+		for _, o := range pathOpts.values {
 			path = append(path, o.AsString())
 		}
 	}
@@ -351,7 +351,10 @@ func (m *Message) MustMarshalBinary() []byte {
 	prev := 0
 
 	for _, id := range ids {
-		for _, val := range options[id] {
+		if _, ok := options[id]; !ok {
+			continue
+		}
+		for _, val := range options[id].values {
 			writeOptHeader(int(id)-prev, val.Len())
 			buf.Write(val.AsBytes())
 			prev = int(id)
@@ -457,7 +460,7 @@ func (m *Message) UnmarshalBinary(data []byte) error {
 		oid := OptionId(prev + delta)
 		val := b[:length]
 		def, ok := optionDefs[oid]
-		if ok && (len(val) < def.minLen || len(val) > def.maxLen) {
+		if ok && (len(val) < def.MinLength || len(val) > def.MaxLength) {
 			// Skip options with illegal value length (RFC7252 section 5.4.3 and 5.4.1.)
 			if oid.Critical() {
 				// MUST cause the return of a 4.02 (Bad Option)

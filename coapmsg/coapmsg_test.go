@@ -36,15 +36,15 @@ func assertEqualMessages(t *testing.T, e, a Message) {
 	if len(e.options) != len(a.options) {
 		t.Errorf("Expected %v options, got %v", len(e.options), len(a.options))
 	} else {
-		for id, vals := range e.options {
-			if len(e.options[id]) != len(a.options[id]) {
-				t.Errorf("Expected option ID %v length to be equal, got %v != %v", id, len(e.options[id]), len(a.options[id]))
+		for id, opt := range e.options {
+			if e.options[id].Len() != a.options[id].Len() {
+				t.Errorf("Expected option ID %v length to be equal, got %v != %v", id, e.options[id].Len(), a.options[id].Len())
 				continue
 			}
 
-			for i, val := range vals {
+			for i, val := range opt.values {
 				expected := val
-				actual := a.options[id][i]
+				actual := a.options[id].values[i]
 				if !bytes.Equal(expected.AsBytes(), actual.AsBytes()) {
 					t.Errorf("Expected Option ID %v value %v, got %v", id, expected, actual)
 				}
@@ -77,14 +77,14 @@ func TestSetOptions(t *testing.T) {
 	if len(msg.options) != 1 {
 		t.Error("Expected 1 option but got", len(msg.options))
 	} else {
-		if len(msg.options[ContentFormat]) != 2 {
-			t.Error("Expected 2 ContentFormat options but got", len(msg.options[ContentFormat]))
+		if msg.options[ContentFormat].Len() != 2 {
+			t.Error("Expected 2 ContentFormat options but got", msg.options[ContentFormat].Len())
 		} else {
-			if MediaType(msg.options[ContentFormat][0].AsUInt16()) != AppJSON {
-				t.Error("Expected option value", AppJSON, "but got", msg.options[ContentFormat][0])
+			if MediaType(msg.options[ContentFormat].values[0].AsUInt16()) != AppJSON {
+				t.Error("Expected option value", AppJSON, "but got", msg.options[ContentFormat].values[0])
 			}
-			if MediaType(msg.options[ContentFormat][1].AsUInt16()) != AppXML {
-				t.Error("Expected option value", AppXML, "but got", msg.options[ContentFormat][0])
+			if MediaType(msg.options[ContentFormat].values[1].AsUInt16()) != AppXML {
+				t.Error("Expected option value", AppXML, "but got", msg.options[ContentFormat].values[0])
 			}
 		}
 	}
@@ -150,8 +150,8 @@ func TestMissingOption(t *testing.T) {
 		t.Errorf("Expected empty slice, got %v", gotEmpty)
 	}
 
-	gotNil := Message{}.options[MaxAge]
-	if gotNil != nil {
+	gotNil, ok := Message{}.options[MaxAge]
+	if ok {
 		t.Errorf("Expected nil, got %v", gotNil)
 	}
 }
@@ -546,6 +546,16 @@ func TestDecodeLargePath(t *testing.T) {
 		b := exp.MustMarshalBinary()
 		t.Fatalf("Expected\n%#v\ngot\n%#v\nfor %#v", exp, req, b)
 	}
+
+	/*
+
+	Expected
+			coapmsg.Message{Type:0x0, Code:0x1, MessageID:0x3039, Token:[]uint8(nil), Payload:[]uint8{}, options:coapmsg.CoapOptions{0xb:coapmsg.Option{Id:0x0, values:[]coapmsg.OptionValue{coapmsg.OptionValue{b:[]uint8{0x74, 0x68, 0x69, 0x73, 0x5f, 0x70, 0x61, 0x74, 0x68, 0x5f, 0x69, 0x73, 0x5f, 0x6c, 0x6f, 0x6e, 0x67, 0x65, 0x72, 0x5f, 0x74, 0x68, 0x61, 0x6e, 0x5f, 0x66, 0x69, 0x66, 0x74, 0x65, 0x65, 0x6e, 0x5f, 0x62, 0x79, 0x74, 0x65, 0x73}, isNil:false}}}}}
+	got		coapmsg.Message{Type:0x0, Code:0x1, MessageID:0x3039, Token:[]uint8(nil), Payload:[]uint8{}, options:coapmsg.CoapOptions{0xb:coapmsg.Option{Id:0xb, values:[]coapmsg.OptionValue{coapmsg.OptionValue{b:[]uint8{0x74, 0x68, 0x69, 0x73, 0x5f, 0x70, 0x61, 0x74, 0x68, 0x5f, 0x69, 0x73, 0x5f, 0x6c, 0x6f, 0x6e, 0x67, 0x65, 0x72, 0x5f, 0x74, 0x68, 0x61, 0x6e, 0x5f, 0x66, 0x69, 0x66, 0x74, 0x65, 0x65, 0x6e, 0x5f, 0x62, 0x79, 0x74, 0x65, 0x73}, isNil:false}}}}}
+			for []byte{0x40, 0x1, 0x30, 0x39, 0xbd, 0x19, 0x74, 0x68, 0x69, 0x73, 0x5f, 0x70, 0x61, 0x74, 0x68, 0x5f, 0x69, 0x73, 0x5f, 0x6c, 0x6f, 0x6e, 0x67, 0x65, 0x72, 0x5f, 0x74, 0x68, 0x61, 0x6e, 0x5f, 0x66, 0x69, 0x66, 0x74, 0x65, 0x65, 0x6e, 0x5f, 0x62, 0x79, 0x74, 0x65, 0x73}
+
+	*/
+
 }
 
 func TestDecodeMessageSmaller(t *testing.T) {

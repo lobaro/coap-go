@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -67,7 +66,7 @@ func msgLogEntry(msg *coapmsg.Message) *logrus.Entry {
 
 	options := logrus.Fields{}
 	for id, o := range msg.Options() {
-		options["opt:"+strconv.Itoa(int(id))] = o
+		options["Opt:"+id.String()] = o.String()
 	}
 
 	return log.WithField("Code", msg.Code.String()).

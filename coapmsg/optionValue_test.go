@@ -38,18 +38,16 @@ var numbers = []struct {
 
 func TestNumbers(t *testing.T) {
 	for _, n := range numbers {
-		def := OptionDef{
-			Number: n.Num,
-		}
+		id := n.Num
 
-		if n.Critical != def.Critical() {
+		if n.Critical != id.Critical() {
 			t.Error(fmt.Sprint("Option ", n.Num, " Critical does not match, should be ", n.Critical))
 		}
-		if n.Unsafe != def.UnSafe() {
+		if n.Unsafe != id.UnSafe() {
 			t.Error(fmt.Sprint("Option ", n.Num, " UnSafe does not match, should be ", n.Unsafe))
 		}
 		// NoCacheKey only has a meaning for options that are Safe-to-Forward
-		if !def.UnSafe() && n.NoCahceKey != def.NoCacheKey() {
+		if !id.UnSafe() && n.NoCahceKey != id.NoCacheKey() {
 			t.Error(fmt.Sprint("Option ", n.Num, " NoCacheKey does not match, should be ", n.NoCahceKey))
 		}
 	}
@@ -103,7 +101,7 @@ func TestParsing(t *testing.T) {
 	}
 
 	// The add has a little nested effect
-	if msg.Options()[Observe][1].AsBytes()[0] != 6 {
+	if msg.Options()[Observe].values[1].AsBytes()[0] != 6 {
 		t.Errorf("Expected observe option to be 6 but is %v", msg.Options().Get(Observe))
 	}
 
@@ -113,22 +111,35 @@ func TestParsing(t *testing.T) {
 	}
 }
 
+func TestPrettyPrint_NoChecks(t *testing.T) {
+	msg := NewMessage()
+	msg.SetPathString("/foo/bar")
+	msg.Options().Set(ETag, []byte{1, 2, 3}) // Opaque option
+	msg.Options().Add(ETag, []byte{4, 5, 6}) // Opaque option
+	msg.Options().Set(IfNoneMatch, 1)        // Empty option
+	msg.Options().Set(Observe, 10)           // Uint
+	msg.Options().Add(Observe, 11)           // Uint
+
+	t.Log("Path:", msg.Options().Get(URIPath).String())
+	t.Log("ETag:", msg.Options().Get(ETag).String())
+	t.Log("IfNoneMatch:", msg.Options().Get(IfNoneMatch).String())
+	t.Log("Observe:", msg.Options().Get(Observe).String())
+}
+
 func _TestFindNumbers(t *testing.T) {
 	for i := 3000; i < 3200; i++ {
-		def := OptionDef{
-			Number: OptionId(i),
-		}
-		if def.Critical() {
+		id := OptionId(i)
+		if id.Critical() {
 			continue
 		}
-		if def.UnSafe() {
-			continue
-		}
-
-		if def.NoCacheKey() {
+		if id.UnSafe() {
 			continue
 		}
 
-		t.Log(fmt.Sprint(def.Number, ": ", def.Critical(), "\t", def.UnSafe(), "\t", def.NoCacheKey()))
+		if id.NoCacheKey() {
+			continue
+		}
+
+		t.Log(fmt.Sprint(id, ": ", id.Critical(), "\t", id.UnSafe(), "\t", id.NoCacheKey()))
 	}
 }
