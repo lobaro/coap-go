@@ -112,11 +112,10 @@ func (v OptionValue) AsUInt16() uint16 {
 	if len(v.b) == 0 {
 		return 0
 	}
-	val := v
-	for len(val.b) < 2 {
-		val.b = append(val.b, 0)
-	}
-	return binary.LittleEndian.Uint16(val.b)
+
+	buf := make([]byte, 2)
+	copy(buf, v.b)
+	return binary.LittleEndian.Uint16(buf)
 }
 
 // For signed values just convert the result
@@ -124,32 +123,32 @@ func (v OptionValue) AsUInt32() uint32 {
 	if len(v.b) == 0 {
 		return 0
 	}
-	val := v
-	for len(val.b) < 4 {
-		val.b = append(val.b, 0)
-	}
-	return binary.LittleEndian.Uint32(val.b)
+	buf := make([]byte, 4)
+	copy(buf, v.b)
+	return binary.LittleEndian.Uint32(buf)
 }
 
 // For signed values just convert the result
 func (v OptionValue) AsUInt64() uint64 {
-
 	if len(v.b) == 0 {
 		return 0
 	}
-	val := v
-	for len(val.b) < 8 {
-		val.b = append(val.b, 0)
-	}
-	return binary.LittleEndian.Uint64(val.b)
+
+	buf := make([]byte, 8)
+	copy(buf, v.b)
+	return binary.LittleEndian.Uint64(buf)
 }
 
 func (v OptionValue) AsString() string {
-	return string(v.b)
+	buf := make([]byte, len(v.b))
+	copy(buf, v.b)
+	return string(buf)
 }
 
 func (v OptionValue) AsBytes() []byte {
-	return v.b
+	buf := make([]byte, len(v.b))
+	copy(buf, v.b)
+	return buf
 }
 func (v OptionValue) Len() int {
 	return len(v.b)
@@ -169,7 +168,7 @@ func (h CoapOptions) Add(key OptionId, value interface{}) error {
 
 	opt := h[key]
 	opt.Id = key
-	opt.values = append(h[key].values, OptionValue{v, false})
+	opt.values = append(opt.values, OptionValue{v, false})
 	h[key] = opt
 	return nil
 }

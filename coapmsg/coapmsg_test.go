@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/Sirupsen/logrus"
 )
 
 var (
@@ -51,6 +53,63 @@ func assertEqualMessages(t *testing.T, e, a Message) {
 			}
 		}
 	}
+}
+
+func msgLogEntry(msg *Message) *logrus.Entry {
+	bin := msg.MustMarshalBinary()
+
+	options := logrus.Fields{}
+	for id, o := range msg.Options() {
+		options["Opt:"+id.String()] = o.String()
+	}
+
+	return logrus.WithField("Code", msg.Code.String()).
+		WithField("Type", msg.Type.String()).
+		WithField("Token", msg.Token).
+		WithField("MessageID", msg.MessageID).
+		//WithField("Payload", msg.Payload).
+		WithField("OptionCount", len(msg.Options())).
+		WithFields(options).
+		WithField("Bin", bin)
+}
+
+// Once we had problems with AsUInt64 which destroyed the options map
+func TestOptionConversionSideEffects(t *testing.T) {
+	bin := []byte{68, 69, 0, 1, 2, 239, 118, 245, 97, 2, 226, 10, 165, 73, 222, 130, 43, 228, 66, 222, 255, 65, 37, 65, 5, 255, 2, 2, 3, 180, 70, 109, 56, 4, 0, 4, 0, 7, 1, 200, 0, 78, 135, 3}
+	msg, err := ParseMessage(bin)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if msg.Code != Content {
+		t.Error("Expected code Content")
+	}
+
+	// This was destroying the options object once
+	msg.options[6].values[0].AsUInt8()
+	msg.options[6].values[0].AsUInt16()
+	msg.options[6].values[0].AsUInt32()
+	msg.options[6].values[0].AsUInt64()
+	msg.options[6].values[0].AsString()
+	msg.options[6].values[0].AsBytes()
+
+	opt3000 := msg.Options().Get(3000).AsUInt16()
+	if opt3000 != 0xde49 {
+		t.Errorf("Expected option:3000 = 0xde49 but got 0x%02x", opt3000)
+	}
+
+	mRef := &msg
+	opt3000 = mRef.Options().Get(3000).AsUInt16()
+	if opt3000 != 0xde49 {
+		t.Errorf("Expected option:3000 = 0xde49 but got 0x%02x", opt3000)
+	}
+
+	//opt3000Str := mRef.Options().Get(3000).String()
+	opt3000Str := mRef.options[3000].String()
+	if opt3000Str != "[[]byte{0x49, 0xde}]" {
+		t.Errorf("Expected option:3000 = [[]byte{0x49, 0xde}] but got %s", opt3000Str)
+	}
+
 }
 
 func TestCode(t *testing.T) {
@@ -549,10 +608,10 @@ func TestDecodeLargePath(t *testing.T) {
 
 	/*
 
-	Expected
-			coapmsg.Message{Type:0x0, Code:0x1, MessageID:0x3039, Token:[]uint8(nil), Payload:[]uint8{}, options:coapmsg.CoapOptions{0xb:coapmsg.Option{Id:0x0, values:[]coapmsg.OptionValue{coapmsg.OptionValue{b:[]uint8{0x74, 0x68, 0x69, 0x73, 0x5f, 0x70, 0x61, 0x74, 0x68, 0x5f, 0x69, 0x73, 0x5f, 0x6c, 0x6f, 0x6e, 0x67, 0x65, 0x72, 0x5f, 0x74, 0x68, 0x61, 0x6e, 0x5f, 0x66, 0x69, 0x66, 0x74, 0x65, 0x65, 0x6e, 0x5f, 0x62, 0x79, 0x74, 0x65, 0x73}, isNil:false}}}}}
-	got		coapmsg.Message{Type:0x0, Code:0x1, MessageID:0x3039, Token:[]uint8(nil), Payload:[]uint8{}, options:coapmsg.CoapOptions{0xb:coapmsg.Option{Id:0xb, values:[]coapmsg.OptionValue{coapmsg.OptionValue{b:[]uint8{0x74, 0x68, 0x69, 0x73, 0x5f, 0x70, 0x61, 0x74, 0x68, 0x5f, 0x69, 0x73, 0x5f, 0x6c, 0x6f, 0x6e, 0x67, 0x65, 0x72, 0x5f, 0x74, 0x68, 0x61, 0x6e, 0x5f, 0x66, 0x69, 0x66, 0x74, 0x65, 0x65, 0x6e, 0x5f, 0x62, 0x79, 0x74, 0x65, 0x73}, isNil:false}}}}}
-			for []byte{0x40, 0x1, 0x30, 0x39, 0xbd, 0x19, 0x74, 0x68, 0x69, 0x73, 0x5f, 0x70, 0x61, 0x74, 0x68, 0x5f, 0x69, 0x73, 0x5f, 0x6c, 0x6f, 0x6e, 0x67, 0x65, 0x72, 0x5f, 0x74, 0x68, 0x61, 0x6e, 0x5f, 0x66, 0x69, 0x66, 0x74, 0x65, 0x65, 0x6e, 0x5f, 0x62, 0x79, 0x74, 0x65, 0x73}
+		Expected
+				coapmsg.Message{Type:0x0, Code:0x1, MessageID:0x3039, Token:[]uint8(nil), Payload:[]uint8{}, options:coapmsg.CoapOptions{0xb:coapmsg.Option{Id:0x0, values:[]coapmsg.OptionValue{coapmsg.OptionValue{b:[]uint8{0x74, 0x68, 0x69, 0x73, 0x5f, 0x70, 0x61, 0x74, 0x68, 0x5f, 0x69, 0x73, 0x5f, 0x6c, 0x6f, 0x6e, 0x67, 0x65, 0x72, 0x5f, 0x74, 0x68, 0x61, 0x6e, 0x5f, 0x66, 0x69, 0x66, 0x74, 0x65, 0x65, 0x6e, 0x5f, 0x62, 0x79, 0x74, 0x65, 0x73}, isNil:false}}}}}
+		got		coapmsg.Message{Type:0x0, Code:0x1, MessageID:0x3039, Token:[]uint8(nil), Payload:[]uint8{}, options:coapmsg.CoapOptions{0xb:coapmsg.Option{Id:0xb, values:[]coapmsg.OptionValue{coapmsg.OptionValue{b:[]uint8{0x74, 0x68, 0x69, 0x73, 0x5f, 0x70, 0x61, 0x74, 0x68, 0x5f, 0x69, 0x73, 0x5f, 0x6c, 0x6f, 0x6e, 0x67, 0x65, 0x72, 0x5f, 0x74, 0x68, 0x61, 0x6e, 0x5f, 0x66, 0x69, 0x66, 0x74, 0x65, 0x65, 0x6e, 0x5f, 0x62, 0x79, 0x74, 0x65, 0x73}, isNil:false}}}}}
+				for []byte{0x40, 0x1, 0x30, 0x39, 0xbd, 0x19, 0x74, 0x68, 0x69, 0x73, 0x5f, 0x70, 0x61, 0x74, 0x68, 0x5f, 0x69, 0x73, 0x5f, 0x6c, 0x6f, 0x6e, 0x67, 0x65, 0x72, 0x5f, 0x74, 0x68, 0x61, 0x6e, 0x5f, 0x66, 0x69, 0x66, 0x74, 0x65, 0x65, 0x6e, 0x5f, 0x62, 0x79, 0x74, 0x65, 0x73}
 
 	*/
 
@@ -576,14 +635,17 @@ func TestDecodeMessageSmaller(t *testing.T) {
 		Payload:   []byte{},
 	}
 
-	exp.Options().Set(ETag, []byte("weetag"))
 	exp.Options().Set(MaxAge, uint32(3))
+	exp.Options().Set(ETag, []byte("weetag"))
 
 	expected := fmt.Sprintf("%#v", exp)
 	actual := fmt.Sprintf("%#v", req)
 	if expected != actual {
 		t.Fatalf("Expected\n%s\ngot\n%s", expected, actual)
 	}
+
+	// coapmsg.Message{Type:0x0, Code:0x1, MessageID:0x3039, Token:[]uint8(nil), Payload:[]uint8{}, options:coapmsg.CoapOptions{0xe:coapmsg.Option{Id:0xe, values:[]coapmsg.OptionValue{coapmsg.OptionValue{b:[]uint8{0x3}, isNil:false}}}, 0x4:coapmsg.Option{Id:0x4, values:[]coapmsg.OptionValue{coapmsg.OptionValue{b:[]uint8{0x77, 0x65, 0x65, 0x74, 0x61, 0x67}, isNil:false}}}}}
+	// coapmsg.Message{Type:0x0, Code:0x1, MessageID:0x3039, Token:[]uint8(nil), Payload:[]uint8{}, options:coapmsg.CoapOptions{0x4:coapmsg.Option{Id:0x4, values:[]coapmsg.OptionValue{coapmsg.OptionValue{b:[]uint8{0x77, 0x65, 0x65, 0x74, 0x61, 0x67}, isNil:false}}}, 0xe:coapmsg.Option{Id:0xe, values:[]coapmsg.OptionValue{coapmsg.OptionValue{b:[]uint8{0x3}, isNil:false}}}}}
 }
 
 func TestByteEncoding(t *testing.T) {
@@ -764,7 +826,7 @@ func TestDecodeContentFormatOptionToMediaType(t *testing.T) {
 	// NOTE: We do NOT treat content type special anymore. It's the user who must convert types
 	// We could offer utils for that.
 	//expected := "coapmsg.MediaType"
-	expected := "coapmsg.OptionValue"
+	expected := "coapmsg.Option"
 	actualContentFormatType := fmt.Sprintf("%T", parsedMsg.Options().Get(ContentFormat))
 	if expected != actualContentFormatType {
 		t.Fatalf("Expected %#v got %#v", expected, actualContentFormatType)

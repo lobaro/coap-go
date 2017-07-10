@@ -199,12 +199,12 @@ func (m *Message) SetOptions(o CoapOptions) {
 }
 
 // IsConfirmable returns true if this message is confirmable.
-func (m Message) IsConfirmable() bool {
+func (m *Message) IsConfirmable() bool {
 	return m.Type == Confirmable
 }
 
 // Path gets the Path set on this message if any.
-func (m Message) Path() []string {
+func (m *Message) Path() []string {
 	var path []string
 	if pathOpts, ok := m.options[URIPath]; ok {
 		for _, o := range pathOpts.values {
@@ -215,7 +215,7 @@ func (m Message) Path() []string {
 }
 
 // PathString gets a path as a / separated string.
-func (m Message) PathString() string {
+func (m *Message) PathString() string {
 	return strings.Join(m.Path(), "/")
 }
 
