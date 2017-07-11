@@ -121,9 +121,20 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	//###########################################
 
 	// When canceling an observer we must reuse the interaction
-	// TODO: When do we delete interactions?
+	if serialCon, ok := conn.(*serialConnection); ok {
+		tokens := make([]string, 0)
+		for _, ia := range serialCon.interactions {
+			tokens = append(tokens, fmt.Sprintf("%v", ia.Token()))
+		}
+		log.WithField("count", len(serialCon.interactions)).
+			WithField("tokens", tokens).
+			Debug("Interactions")
+
+	}
+
 	ia := conn.FindInteraction(req.Token, MessageId(0))
 	if ia == nil {
+		// Gets deleted when interaction closes
 		ia = startInteraction(conn, reqMsg)
 	}
 

@@ -86,6 +86,7 @@ func (ia *Interaction) Close() {
 	ia.closed = true
 
 	if ia.StopListenForNotifications != nil {
+		logrus.Debug("Stop listening for Notifications")
 		ia.StopListenForNotifications()
 	}
 
@@ -94,6 +95,7 @@ func (ia *Interaction) Close() {
 	}
 
 	ia.conn.RemoveInteraction(ia)
+	// TODO: Should we close the connection when there are no ongoing interactions?
 }
 
 func (ia *Interaction) HandleMessage(msg *coapmsg.Message) {
@@ -102,7 +104,7 @@ func (ia *Interaction) HandleMessage(msg *coapmsg.Message) {
 	case ia.receiveCh <- msg:
 	case <-time.After(3 * time.Second):
 		// TODO: We should avoid this. find the reason why it happens and maybe buffer the channel
-		log.Error("Interaction did not handled incomming message. Discarding.")
+		log.Error("Interaction did not handled incoming message. Discarding.")
 	}
 	log.Debug("Interaction handle message. DONE.")
 
