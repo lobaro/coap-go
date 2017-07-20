@@ -291,9 +291,9 @@ func openComPort(portName string, mode *serial.Mode) (port SerialPort, newPortNa
 		}
 
 		if time.Since(start) > time.Second {
+			log.WithError(err).Debug("Failed to open serial port after 1 second")
 			return
 		}
-		log.WithError(err).Debug("Failed to open serial port")
 		time.Sleep(10 * time.Millisecond)
 	}
 
