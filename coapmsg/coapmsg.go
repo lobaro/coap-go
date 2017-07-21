@@ -187,6 +187,11 @@ func NewRst(messageId uint16) Message {
 	}
 }
 
+func (m *Message) String() string {
+	str := fmt.Sprintf(`coap.Message{Code:"%s", Type:"%s", MsgId:%d, Token:%v, Options:"%s", Payload:"%s"}`, m.Code, m.Type, m.MessageID, m.Token, m.Options(), m.Payload)
+	return str
+}
+
 func (m *Message) Options() CoapOptions {
 	if m.options == nil {
 		m.options = CoapOptions{}
@@ -201,6 +206,11 @@ func (m *Message) SetOptions(o CoapOptions) {
 // IsConfirmable returns true if this message is confirmable.
 func (m *Message) IsConfirmable() bool {
 	return m.Type == Confirmable
+}
+
+// IsConfirmable returns true if this message is confirmable.
+func (m *Message) IsNonConfirmable() bool {
+	return m.Type == NonConfirmable
 }
 
 // Path gets the Path set on this message if any.

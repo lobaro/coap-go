@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/Lobaro/coap-go/coapmsg"
@@ -19,12 +20,14 @@ type TestConnector struct {
 	In   *PacketBuffer
 	Out  *PacketBuffer
 	conn *TestConnection
+	t    *testing.T
 }
 
-func NewTestConnector() *TestConnector {
+func NewTestConnector(t *testing.T) *TestConnector {
 	return &TestConnector{
 		In:  &PacketBuffer{name: "in"},
 		Out: &PacketBuffer{name: "out"},
+		t:   t,
 	}
 }
 
@@ -32,13 +35,14 @@ func (c *TestConnector) FakeReceiveData(data []byte) error {
 	return c.In.WritePacket(data)
 }
 
-func (c *TestConnector) FakeReceiveMessage(msg coapmsg.Message) error {
+func (c *TestConnector) ServerSend(msg coapmsg.Message) error {
+	c.t.Logf("Server: send %s", msg.String())
 	p := msg.MustMarshalBinary()
 	err := c.In.WritePacket(p)
 	return err
 }
 
-func (c *TestConnector) WaitForSendMessage(timeout time.Duration) (coapmsg.Message, error) {
+func (c *TestConnector) ServerReceive(timeout time.Duration) (coapmsg.Message, error) {
 	buf := &bytes.Buffer{}
 
 	ctx, _ := context.WithTimeout(context.Background(), timeout)
@@ -56,11 +60,13 @@ func (c *TestConnector) WaitForSendMessage(timeout time.Duration) (coapmsg.Messa
 
 		select {
 		case <-ctx.Done():
-			return coapmsg.NewMessage(), errors.New(fmt.Sprintf("WaitForSendMessage Timeout: %d", c.Out.Len()))
+			return coapmsg.NewMessage(), errors.New(fmt.Sprintf("Server: Receive Timeout after %d seconds. (%f)", timeout.Seconds(), c.Out.Len()))
 		default:
 		}
 	}
-	return coapmsg.ParseMessage(buf.Bytes())
+	msg, err := coapmsg.ParseMessage(buf.Bytes())
+	c.t.Logf("Server: received %s", msg.String())
+	return msg, err
 }
 
 func (c *TestConnector) GetSendMessage() (coapmsg.Message, error) {

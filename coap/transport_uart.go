@@ -69,6 +69,11 @@ func msgLogEntry(msg *coapmsg.Message) *logrus.Entry {
 		options["Opt:"+id.String()] = o.String()
 	}
 
+	return log.WithField("msg", msg.String()).
+		WithField("Bin", bin).
+		WithField("OptionCount", len(msg.Options()))
+
+	/* Old when there was no msg.String() impl
 	return log.WithField("Code", msg.Code.String()).
 		WithField("Type", msg.Type.String()).
 		WithField("Token", msg.Token).
@@ -76,7 +81,7 @@ func msgLogEntry(msg *coapmsg.Message) *logrus.Entry {
 		//WithField("Payload", msg.Payload).
 		WithField("OptionCount", len(msg.Options())).
 		WithFields(options).
-		WithField("Bin", bin)
+		WithField("Bin", bin)*/
 }
 
 func logMsg(msg *coapmsg.Message, info string) {
@@ -144,19 +149,10 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 		ia = conn.StartInteraction(conn, reqMsg)
 	}
 
-	if ia.receiveCh == nil {
-		log.Fatal("Interaction receiveCh is nil!!!") // TODO: REMOVE ME?
-	}
-
 	resMsg, err := ia.RoundTrip(req.Context(), reqMsg)
 
-	defer func() {
-		if !ia.IsObserving() {
-			ia.Close()
-		}
-	}()
-
 	if err != nil {
+		ia.Close()
 		return nil, wrapError(err, fmt.Sprint("Failed Interaction Roundtrip with Token ", ia.Token()))
 	}
 
@@ -166,43 +162,53 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 
 	res = buildResponse(req, resMsg)
 
-	//res.next = ia.NotificationCh
-	// TODO: I do not like that we need 2 go routines (1 here and one inside the interaction) for handling notifies
 	// An observe request must set the observe option to 0
 	// the server has to response with the observe option set to != 0
 	if ia.IsObserving() {
-		// TODO: We should get the info from the interaction if it is required to listen for notifications
+		// Must create chan before returning
+		res.next = make(chan *Response, 0)
 		go handleInteractionNotifyMessage(ia, req, res)
+	} else {
+		ia.Close()
 	}
 
 	return res, nil
 }
 
-func handleInteractionNotifyMessage(ia *Interaction, req *Request, currResponse *Response) {
+// Takes responsibility to close ia
+// res.next will be used to send responses to the client
+func handleInteractionNotifyMessage(ia *Interaction, initialReq *Request, initialRes *Response) {
+	defer close(initialRes.next)
 
-	defer close(currResponse.next)
+	// When we close the interaction too early,
+	// a potential ACK on the cancel observe request can not be received anymore
+	defer time.AfterFunc(3*time.Second, func() {
+		// We would expect that everything went good and the ia is already closed
+		// but if not help a bit
+		if !ia.Closed() {
+			ia.Close()
+		}
+	})
 
 	// TODO: There is no timeout for the NotificationCh
 	// this puts all responsibility to stop the observe to the client
 	// we should consider some big default timeout (e.g. 5 minutes) to close the interaction
 	// when nothing is received
-	select {
-	case resMsg, ok := <-ia.NotificationCh:
+	for {
+		// Block till receive or chan is closed, panic if chan is nil
+		resMsg, ok := <-ia.NotificationCh
 		if ok {
-			res := buildResponse(req, resMsg)
+			res := buildResponse(initialReq, resMsg)
 			select {
-			case currResponse.next <- res: // MUST be unbuffered, else we can't detect a not listening client
-				// Async-Recursion only for defer close to work. Else we could use a for-loop
-				go handleInteractionNotifyMessage(ia, req, res)
+			case initialRes.next <- res: // MUST NOT be buffered, else we can't detect a not listening client
 			case <-time.After(5 * time.Second): // Give some time for the client to handle res.Next()
 				log.WithField("Token", ia.Token()).Warn("No app handler for notification response registered. Stop listen for notifications.")
-				ia.Close()
+				return
 			}
-
 		} else {
 			// Also happens for all non observe requests since ia.NotificationCh will be closed.
 			log.Info("Stopped observer, no more notifies expected.")
-			ia.Close()
+			return
 		}
 	}
 }
@@ -214,7 +220,6 @@ func buildResponse(req *Request, resMsg *coapmsg.Message) *Response {
 		Body:       ioutil.NopCloser(bytes.NewReader(resMsg.Payload)),
 		Options:    resMsg.Options(),
 		Request:    req,
-		next:       make(chan *Response, 0),
 	}
 }
 

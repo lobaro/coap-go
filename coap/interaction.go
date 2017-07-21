@@ -16,6 +16,8 @@ import (
 type Token []byte
 type MessageId uint16
 
+type NotifyFunc func(ia *Interaction, currResponse *coapmsg.Message)
+
 // Interaction tracks one interaction between a CoAP client and Server.
 // The Interaction is created with a request and ends with a response.
 // An interaction is bound to a CoAP Token.
@@ -23,10 +25,14 @@ type MessageId uint16
 // For observe multiple requests (register, deregister)
 // and responses (Notifies) might belong to a single interaction
 type Interaction struct {
-	req           coapmsg.Message // initial request message
-	lastMessageId MessageId       // Last message Id, used to match ACK's
-	conn          Connection
-	receiveCh     chan *coapmsg.Message
+	req              coapmsg.Message // initial request message
+	lastMessageId    MessageId       // Last message Id, used to match ACK's
+	conn             Connection
+	receiveCh        chan *coapmsg.Message
+	receiveObserveCh chan *coapmsg.Message
+
+	// isObserve is set to true during a RoundTrip when it was a observe request
+	isObserve bool
 
 	// CancelObserve will stop the interaction to listen for Notifications
 	StopListenForNotifications context.CancelFunc
@@ -40,10 +46,19 @@ type Interaction struct {
 }
 
 type Interactions struct {
+	mu           sync.Mutex
 	interactions []*Interaction
 }
 
+func (ias *Interactions) InteractionCount() int {
+	ias.mu.Lock()
+	defer ias.mu.Unlock()
+	return len(ias.interactions)
+}
+
 func (ias *Interactions) RemoveInteraction(interaction *Interaction) {
+	ias.mu.Lock()
+	defer ias.mu.Unlock()
 	for i, ia := range ias.interactions {
 		if ia == interaction {
 			copy(ias.interactions[i:], ias.interactions[i+1:])
@@ -55,10 +70,13 @@ func (ias *Interactions) RemoveInteraction(interaction *Interaction) {
 }
 
 func (ias *Interactions) StartInteraction(conn Connection, reqMsg *coapmsg.Message) *Interaction {
+	ias.mu.Lock()
+	defer ias.mu.Unlock()
 	ia := &Interaction{
-		req:       *reqMsg,
-		conn:      conn,
-		receiveCh: make(chan *coapmsg.Message, 0),
+		req:              *reqMsg,
+		conn:             conn,
+		receiveCh:        make(chan *coapmsg.Message, 0),
+		receiveObserveCh: make(chan *coapmsg.Message, 0),
 	}
 
 	log.WithField("Token", ia.Token()).Debug("Start interaction")
@@ -69,6 +87,8 @@ func (ias *Interactions) StartInteraction(conn Connection, reqMsg *coapmsg.Messa
 }
 
 func (ias *Interactions) FindInteraction(token Token, msgId MessageId) *Interaction {
+	ias.mu.Lock()
+	defer ias.mu.Unlock()
 	for _, ia := range ias.interactions {
 		if ia.Token().Equals(token) {
 			return ia
@@ -87,34 +107,56 @@ func (ia *Interaction) Token() Token {
 	return ia.req.Token
 }
 
+func (ia *Interaction) Closed() bool {
+	return ia.closed
+}
+
 func (ia *Interaction) Close() {
 	if ia.closed {
-		logrus.WithField("token", ia.Token()).Warn("Interaction already closed")
+		logrus.WithField("token", ia.Token()).Warn("Interaction already closed.")
 		return
 	}
-	log.WithField("token", ia.Token()).Debug("Closing interaction")
+	log.WithField("token", ia.Token()).Debug("Closing interaction.")
 	ia.closed = true
 
 	if ia.StopListenForNotifications != nil {
-		logrus.Debug("Stop listening for Notifications")
+		logrus.Debug("Stop listening for Notifications.")
 		ia.StopListenForNotifications()
 	}
 
-	if ia.receiveCh != nil {
-		close(ia.receiveCh)
-	}
+	close(ia.receiveCh)
+	close(ia.receiveObserveCh)
 
 	ia.conn.RemoveInteraction(ia)
-	// TODO: Should we close the connection when there are no ongoing interactions?
+	if ia.conn.InteractionCount() == 0 {
+		logrus.Debug("No interactions left, closing connection.")
+		ia.conn.Close()
+	}
+}
+
+func isObserveResponse(msg *coapmsg.Message) bool {
+	return (msg.IsConfirmable() || msg.IsNonConfirmable()) && msg.Options().Get(coapmsg.Observe).AsUInt16() > 0
 }
 
 func (ia *Interaction) HandleMessage(msg *coapmsg.Message) {
-	log.Debug("Interaction handle message...")
-	select {
-	case ia.receiveCh <- msg:
-	case <-time.After(3 * time.Second):
-		// TODO: We should avoid this. find the reason why it happens and maybe buffer the channel
-		log.Error("Interaction did not handled incoming message. Discarding.")
+	log.WithField("observing", ia.IsObserving()).Debug("Interaction handle message...")
+
+	if isObserveResponse(msg) {
+		select {
+		case ia.receiveObserveCh <- msg:
+		case <-time.After(1 * time.Second):
+			// TODO: We should avoid this. find the reason why it happens and maybe buffer the channel
+			log.Error("Interaction did not handled incoming ACK/RST message. Discarding & Close interaction.")
+			ia.Close()
+		}
+	} else {
+		select {
+		case ia.receiveCh <- msg:
+		case <-time.After(1 * time.Second):
+			// TODO: We should avoid this. find the reason why it happens and maybe buffer the channel
+			log.Error("Interaction did not handled incoming message. Discarding & Close interaction.")
+			ia.Close()
+		}
 	}
 	log.Debug("Interaction handle message. DONE.")
 
@@ -135,8 +177,21 @@ func (ia *Interaction) readMessage(ctx context.Context) (*coapmsg.Message, error
 	}
 }
 
+// readObserveMessage can receive message with the observe option set
+func (ia *Interaction) readObserveMessage(ctx context.Context) (*coapmsg.Message, error) {
+	select {
+	case msg, ok := <-ia.receiveObserveCh:
+		if !ok {
+			return msg, READ_MESSAGE_CHAN_CLOSED
+		}
+		return msg, nil
+	case <-ctx.Done():
+		return nil, READ_MESSAGE_CTX_DONE
+	}
+}
+
 func (ia *Interaction) IsObserving() bool {
-	return ia.NotificationCh != nil
+	return ia.isObserve
 }
 
 var ERROR_READ_ACK = "Failed to read ACK"
@@ -145,15 +200,20 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 	ia.roundTripMu.Lock()
 	defer ia.roundTripMu.Unlock()
 
-	// A new round trip on an existing interaction can only work when we are not listening
-	// for notifications. Else the notifications eats up all responses from the server.
-	// One of the few reason to do this is to cancel an observe anyway
-	//
-	// We are still able to handle interactions for other tokens in parallel
-	//
-	// Throws without nil check when requesting unknown resource
-	if ia.StopListenForNotifications != nil {
-		ia.StopListenForNotifications()
+	// This is a cancel observe request.
+	if reqMsg.Options().Get(coapmsg.Observe).AsUInt8() > 0 {
+		ia.isObserve = false
+
+		// A new round trip on an existing interaction can only work when we are not listening
+		// for notifications. Else the notifications eats up all responses from the server.
+		// One of the few reason to do this is to cancel an observe anyway
+		//
+		// We are still able to handle interactions for other tokens in parallel
+		//
+		// Throws without nil check when requesting unknown resource
+		if ia.StopListenForNotifications != nil {
+			ia.StopListenForNotifications()
+		}
 	}
 
 	ia.lastMessageId = MessageId(reqMsg.MessageID)
@@ -257,7 +317,11 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 
 	// An observe request must set the observe option to 0
 	// the server has to response with the observe option set
-	if reqMsg.Options().Get(coapmsg.Observe).AsUInt8() == 0 && resMsg.Options().Get(coapmsg.Observe).IsSet() {
+	if reqMsg.Options().Get(coapmsg.Observe).IsSet() &&
+		reqMsg.Options().Get(coapmsg.Observe).AsUInt8() == 0 &&
+		resMsg.Options().Get(coapmsg.Observe).IsSet() {
+		ia.isObserve = true
+		// Must create chan before returning
 		ia.NotificationCh = make(chan *coapmsg.Message, 0)
 		go ia.waitForNotify(ctx)
 	}
@@ -285,20 +349,22 @@ func (ia *Interaction) sendCancelObserve() {
 	sendMessage(ia.conn, &reqMsg)
 }*/
 
+func (ia *Interaction) handleNotification(resMsg *coapmsg.Message) {
+}
+
 // waitForNotify will actively handle notification messages
 func (ia *Interaction) waitForNotify(ctx context.Context) {
-	defer func() {
-		close(ia.NotificationCh)
-		ia.NotificationCh = nil
-	}()
-	withCancel, cancel := context.WithCancel(ctx)
+	defer close(ia.NotificationCh)
+
+	withCancel, cancelCtx := context.WithCancel(ctx)
 
 	logWithToken := log.WithField("token", ia.Token())
 
 	cancelDone := make(chan struct{})
 	defer close(cancelDone)
 	ia.StopListenForNotifications = func() {
-		cancel()
+		ia.isObserve = false
+		cancelCtx()
 		// We must actively wait for the cancel to be done,
 		// else readMessage could eat up bytes that it should not
 		<-cancelDone
@@ -306,14 +372,18 @@ func (ia *Interaction) waitForNotify(ctx context.Context) {
 	}
 
 	for {
-		resMsg, err := ia.readMessage(withCancel)
+		resMsg, err := ia.readObserveMessage(withCancel)
 		if err != nil {
 			if err != READ_MESSAGE_CTX_DONE {
 				logWithToken.WithError(err).Error("Stopped observer unexpected")
 			} else {
-				logWithToken.Info("Stopped observer")
+				logWithToken.WithError(err).Info("Stopped observer")
 			}
 			return
+		}
+
+		if resMsg.Options().Get(coapmsg.Observe).IsNotSet() {
+			logrus.WithField("msg", resMsg.String()).Error("Got non observe response in observe handler")
 		}
 
 		select {
@@ -325,7 +395,7 @@ func (ia *Interaction) waitForNotify(ctx context.Context) {
 			if resMsg.Type == coapmsg.Confirmable {
 				ack := coapmsg.NewAck(resMsg.MessageID)
 				if err := sendMessage(ia.conn, &ack); err != nil {
-					log.WithError(err).Error("Failed to send ACK for notify")
+					logWithToken.WithError(err).Error("Failed to send ACK for notify")
 					return
 				}
 			}
@@ -334,7 +404,7 @@ func (ia *Interaction) waitForNotify(ctx context.Context) {
 			// Even non-confirmable messages can be answered with a RST
 			rst := coapmsg.NewRst(resMsg.MessageID)
 			if err := sendMessage(ia.conn, &rst); err != nil {
-				log.WithError(err).Error("Failed to send RST for notify (1)")
+				logWithToken.WithError(err).Error("Failed to send RST for notify (1)")
 				return
 			}
 			return
@@ -346,7 +416,7 @@ func (ia *Interaction) waitForNotify(ctx context.Context) {
 			// Even non-confirmable messages can be answered with a RST
 			rst := coapmsg.NewRst(resMsg.MessageID)
 			if err := sendMessage(ia.conn, &rst); err != nil {
-				log.WithError(err).Error("Failed to send RST for notify (2)")
+				logWithToken.WithError(err).Error("Failed to send RST for notify (2)")
 				return
 			}
 

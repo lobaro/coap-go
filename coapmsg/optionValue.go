@@ -158,6 +158,19 @@ func (v OptionValue) Len() int {
 // keys to sets of values.
 type CoapOptions map[OptionId]Option
 
+func (h CoapOptions) String() string {
+	if len(h) == 0 {
+		return "<none>"
+	}
+
+	str := make([]string, 0)
+	for id, o := range h {
+		str = append(str, fmt.Sprintf("%s=%s", id.String(), o.String()))
+	}
+
+	return strings.Join(str, ", ")
+}
+
 // Add adds the key, value pair to the header.
 // It appends to any existing values associated with key.
 func (h CoapOptions) Add(key OptionId, value interface{}) error {

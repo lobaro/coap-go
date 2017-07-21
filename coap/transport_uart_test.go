@@ -59,7 +59,7 @@ func TestUrl(t *testing.T) {
 }
 
 // A test should not leave any bytes on the wire uninterpreted
-func ValidateRemainingBytes(t *testing.T, conn *TestConnector) {
+func ValidateCleanConnection(t *testing.T, conn *TestConnector) {
 	//var writtenBytes = make([]byte, 500)
 	//n, err := conn.SendBuf.Read(writtenBytes)
 	n := conn.Out.Len()
@@ -85,13 +85,22 @@ func ValidateRemainingBytes(t *testing.T, conn *TestConnector) {
 
 	if n > 0 {
 		t.Logf("Unhandled Transport SendBuf %d messages", n)
-		t.Error("ReceiveBuf is not empty - handle all bytes in test")
+		msg, _ := coapmsg.ParseMessage(conn.In.packets[0])
+		t.Errorf("ReceiveBuf is not empty (%d messages) - handle all bytes in test. conn.In.packets[0]: %v, %v", n, conn.In.packets[0], msg.String())
+	}
+
+	if conn.conn.InteractionCount() != 0 {
+		t.Errorf("Error: Expected interaction count = 0 but was %d", conn.conn.InteractionCount())
+	}
+
+	if !conn.conn.Closed() {
+		t.Error("Error: Expected connection to be closed, but it's not")
 	}
 }
 
 func TestRequestResponsePiggyback(t *testing.T) {
 	trans := NewTransportUart()
-	testCon := NewTestConnector()
+	testCon := NewTestConnector(t)
 	trans.Connecter = testCon
 
 	_, err := testCon.Connect("ignored")
@@ -109,7 +118,7 @@ func TestRequestResponsePiggyback(t *testing.T) {
 	asyncDoneChan := make(chan bool)
 	go func() {
 		// Check outgoing message
-		msg, err := testCon.WaitForSendMessage(5 * time.Second)
+		msg, err := testCon.ServerReceive(5 * time.Second)
 		if err != nil {
 			t.Error(err)
 		}
@@ -122,7 +131,7 @@ func TestRequestResponsePiggyback(t *testing.T) {
 		ack.Code = coapmsg.Content // For piggyback response. Default Empty would be postponed
 		ack.Token = msg.Token
 		ack.Payload = []byte("test")
-		err = testCon.FakeReceiveMessage(ack)
+		err = testCon.ServerSend(ack)
 		if err != nil {
 			t.Error(err)
 		}
@@ -159,7 +168,7 @@ func TestRequestResponsePiggyback(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Error("Test Failed: Timeout")
 	}
-	ValidateRemainingBytes(t, testCon)
+	ValidateCleanConnection(t, testCon)
 
 	if len(testCon.conn.interactions) != 0 {
 		t.Errorf("Interactions not cleaned up! len: %d", len(testCon.conn.interactions))
@@ -191,7 +200,7 @@ func _TestManyParallel(t *testing.T) {
 	wg.Add(n)
 
 	trans := NewTransportUart()
-	testCon := NewTestConnector()
+	testCon := NewTestConnector(t)
 	trans.Connecter = testCon
 	_, err := testCon.Connect("ignored")
 	if err != nil {
@@ -211,7 +220,7 @@ func _TestManyParallel(t *testing.T) {
 
 func TestRequestResponsePostponed(t *testing.T) {
 	trans := NewTransportUart()
-	testCon := NewTestConnector()
+	testCon := NewTestConnector(t)
 	trans.Connecter = testCon
 	_, err := testCon.Connect("ignored")
 	if err != nil {
@@ -233,7 +242,7 @@ func RunRequestResponsePostponed(t *testing.T, trans *TransportUart) {
 	asyncDoneChan := make(chan bool)
 	go func() {
 		// Check outgoing message
-		msg, err := testCon.WaitForSendMessage(3 * time.Second)
+		msg, err := testCon.ServerReceive(3 * time.Second)
 		if err != nil {
 			t.Error(err)
 			asyncDoneChan <- true
@@ -246,7 +255,7 @@ func RunRequestResponsePostponed(t *testing.T, trans *TransportUart) {
 		// Send ack
 		ack := coapmsg.NewAck(msg.MessageID)
 		ack.Code = coapmsg.Empty // For postponed response.
-		err = testCon.FakeReceiveMessage(ack)
+		err = testCon.ServerSend(ack)
 		if err != nil {
 			t.Error(err)
 		}
@@ -259,13 +268,13 @@ func RunRequestResponsePostponed(t *testing.T, trans *TransportUart) {
 		res.Token = msg.Token
 		res.Code = coapmsg.Content
 		res.Payload = []byte("test")
-		err = testCon.FakeReceiveMessage(res)
+		err = testCon.ServerSend(res)
 		if err != nil {
 			t.Error(err)
 		}
 
 		// Expect an acknowledgment for our CON
-		msg, err = testCon.WaitForSendMessage(3 * time.Second)
+		msg, err = testCon.ServerReceive(3 * time.Second)
 
 		if err != nil {
 			t.Error(err)
@@ -310,7 +319,7 @@ func RunRequestResponsePostponed(t *testing.T, trans *TransportUart) {
 	case <-time.After(10 * time.Second):
 		t.Error("Test Failed: Timeout")
 	}
-	ValidateRemainingBytes(t, testCon)
+	ValidateCleanConnection(t, testCon)
 
 	if len(testCon.conn.interactions) != 0 {
 		t.Errorf("Interactions not cleaned up! len: %d", len(testCon.conn.interactions))
@@ -321,7 +330,7 @@ func NewTestClient(t *testing.T) (*Client, *TestConnector) {
 	client := NewClient()
 	client.Timeout = 10 * time.Second
 	trans := NewTransportUart()
-	testCon := NewTestConnector()
+	testCon := NewTestConnector(t)
 	trans.Connecter = testCon
 	_, err := testCon.Connect("ignored")
 	if err != nil {
@@ -368,7 +377,7 @@ func TestParallelRequests(t *testing.T) {
 	requestsSend := make(chan bool)
 	go func() {
 		// Wait for first get to be send
-		_, err := conn.WaitForSendMessage(3 * time.Second)
+		_, err := conn.ServerReceive(3 * time.Second)
 		if err != nil {
 			t.Error(err)
 		}
@@ -397,7 +406,7 @@ func TestParallelRequests(t *testing.T) {
 		<-requestsSend
 
 		// Wait for first get to be send
-		_, err := conn.WaitForSendMessage(3 * time.Second)
+		_, err := conn.ServerReceive(3 * time.Second)
 		if err != nil {
 			t.Error(err)
 		}
@@ -406,7 +415,7 @@ func TestParallelRequests(t *testing.T) {
 
 		// Confirm Message 1 as postboned
 		ack := coapmsg.NewAck(1)
-		err = conn.FakeReceiveMessage(ack)
+		err = conn.ServerSend(ack)
 		if err != nil {
 			t.Error(err)
 		}
@@ -416,7 +425,7 @@ func TestParallelRequests(t *testing.T) {
 		ack.Code = coapmsg.Content // For piggyback response. Default Empty would be postponed
 		ack.Token = []byte{2}
 		ack.Payload = []byte("test2")
-		err = conn.FakeReceiveMessage(ack)
+		err = conn.ServerSend(ack)
 		if err != nil {
 			t.Error(err)
 		}
@@ -427,7 +436,7 @@ func TestParallelRequests(t *testing.T) {
 		ack.Code = coapmsg.Content // For piggyback response. Default Empty would be postponed
 		ack.Token = []byte{1}
 		ack.Payload = []byte("test1")
-		err = conn.FakeReceiveMessage(ack)
+		err = conn.ServerSend(ack)
 		if err != nil {
 			t.Error(err)
 		}
@@ -436,7 +445,7 @@ func TestParallelRequests(t *testing.T) {
 	}()
 
 	if waitTimeout(wg, 10*time.Second) {
-		ValidateRemainingBytes(t, conn)
+		ValidateCleanConnection(t, conn)
 
 		if len(conn.conn.interactions) != 0 {
 			t.Errorf("Interactions not cleaned up! len: %d", len(conn.conn.interactions))
@@ -477,7 +486,7 @@ func TestClientObserve(t *testing.T) {
 	client := NewClient()
 	client.Timeout = 10 * time.Second
 	trans := NewTransportUart()
-	testCon := NewTestConnector()
+	testCon := NewTestConnector(t)
 	trans.Connecter = testCon
 	_, err := testCon.Connect("ignored")
 	if err != nil {
@@ -489,7 +498,8 @@ func TestClientObserve(t *testing.T) {
 	// Deliver expected network traffic async.
 	asyncDoneChan := make(chan bool)
 	go func() {
-		msg, err := testCon.WaitForSendMessage(3 * time.Second)
+		t.Log("Server: wait for msg")
+		msg, err := testCon.ServerReceive(3 * time.Second)
 		if err != nil {
 			t.Error(err)
 		}
@@ -521,8 +531,8 @@ func TestClientObserve(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		logrus.Info("Fake Receive ACK")
-		err = testCon.FakeReceiveMessage(ack)
+
+		err = testCon.ServerSend(ack)
 		if err != nil {
 			t.Error(err)
 		}
@@ -540,14 +550,14 @@ func TestClientObserve(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		logrus.Info("Fake Receive CON")
-		err = testCon.FakeReceiveMessage(ack)
+
+		err = testCon.ServerSend(ack)
 		if err != nil {
 			t.Error(err)
 		}
 
 		// Wait for the ACK of the last CON message
-		msg, err = testCon.WaitForSendMessage(3 * time.Second)
+		msg, err = testCon.ServerReceive(3 * time.Second)
 		if err != nil {
 			t.Error(err)
 		}
@@ -556,7 +566,7 @@ func TestClientObserve(t *testing.T) {
 		}
 
 		// Wait for Cancel observe
-		msg, err = testCon.WaitForSendMessage(3 * time.Second)
+		msg, err = testCon.ServerReceive(3 * time.Second)
 		if err != nil {
 			t.Error(err)
 		}
@@ -566,7 +576,7 @@ func TestClientObserve(t *testing.T) {
 		ack = coapmsg.NewAck(msg.MessageID)
 		ack.Token = msg.Token
 		ack.Code = coapmsg.Content
-		err = testCon.FakeReceiveMessage(ack)
+		err = testCon.ServerSend(ack)
 		if err != nil {
 			t.Error(err)
 		}
@@ -574,6 +584,7 @@ func TestClientObserve(t *testing.T) {
 		asyncDoneChan <- true
 	}()
 
+	t.Log("Client: start observe")
 	res, err := client.Observe("coap+uart://any/o")
 
 	if err != nil {
@@ -590,11 +601,11 @@ func TestClientObserve(t *testing.T) {
 		t.Errorf("Expected body '1' but got %s", buf.String())
 	}
 
-	t.Logf("Got response 1: %s", buf.String())
+	t.Logf("Clicent: Got response 1: %s", buf.String())
 
 	// Get the second response
 	if res != nil {
-		logrus.Info("Waiting for response 2")
+		t.Log("Client: Waiting for response 2")
 		select {
 		case res = <-res.Next():
 			buf.Reset()
@@ -605,14 +616,13 @@ func TestClientObserve(t *testing.T) {
 			if buf.String() != "2" {
 				t.Errorf("Expected body '2' but got %s", buf.String())
 			}
-			t.Logf("Got response 2: %s", buf.String())
+			t.Logf("Client: Got response 2: %s", buf.String())
 
 			time.Sleep(200 * time.Millisecond)
-			t.Log("Canceling the observe")
-			logrus.Info("Canceling the observe")
+			t.Log("Client: Canceling the observe")
 			_, err = client.CancelObserve(res)
 			if err != nil {
-				t.Error(err)
+				t.Error("Error: " + err.Error())
 			}
 		case <-time.After(3 * time.Second):
 			t.Error("Timeout while waiting for Next")
@@ -626,5 +636,110 @@ func TestClientObserve(t *testing.T) {
 		t.Errorf("Interactions not cleaned up! len: %d", len(testCon.conn.interactions))
 	}
 
-	ValidateRemainingBytes(t, testCon)
+	ValidateCleanConnection(t, testCon)
+}
+
+func TestClientCancelObserve(t *testing.T) {
+
+	client := NewClient()
+	client.Timeout = 10 * time.Second
+	trans := NewTransportUart()
+	testCon := NewTestConnector(t)
+	trans.Connecter = testCon
+	_, err := testCon.Connect("ignored")
+	if err != nil {
+		t.Error(err)
+	}
+
+	client.Transport = trans
+
+	// Deliver expected network traffic async.
+	asyncDoneChan := make(chan bool)
+	go func() {
+		t.Log("Server: wait for msg")
+		msg, err := testCon.ServerReceive(5 * time.Second)
+		if err != nil {
+			t.Error(err)
+		}
+		// Client             Server
+		// |                    |
+		// |  GET /temperature  |
+		// |    Token: 0x4a     |   Registration
+		// |  Observe: 0        |
+		// +------------------->|
+		observeOptionVal := msg.Options().Get(coapmsg.Observe).AsUInt8()
+		if observeOptionVal != 0 {
+			t.Errorf("Expected observe option to be '0' but was %d", observeOptionVal)
+		}
+
+		// |                    |
+		// |    2.05 Content    |
+		// |    Token: 0x4a     |   Notification of
+		// |  Observe: 12       |   the current state
+		// |  Payload: 22.9 Cel |
+		// |<-------------------+   Repeat N times
+
+		// Send ack with initial
+		ack := coapmsg.NewAck(msg.MessageID)
+		ack.Type = coapmsg.Acknowledgement
+		ack.Code = coapmsg.Content // For piggyback response.
+		ack.Token = msg.Token
+		ack.Payload = []byte("1")
+		err = ack.Options().Add(coapmsg.Observe, 1)
+		if err != nil {
+			t.Error(err)
+		}
+
+		err = testCon.ServerSend(ack)
+		if err != nil {
+			t.Error(err)
+		}
+
+		// Wait for Cancel observe
+		msg, err = testCon.ServerReceive(5 * time.Second)
+		if err != nil {
+			t.Error(err)
+		}
+		if msg.Options().Get(coapmsg.Observe).AsUInt8() != 1 {
+			t.Error("Expected cancel observe (=1) option")
+		}
+		ack = coapmsg.NewAck(msg.MessageID)
+		ack.Token = msg.Token
+		ack.Code = coapmsg.Content
+		err = testCon.ServerSend(ack)
+		if err != nil {
+			t.Error(err)
+		}
+
+		asyncDoneChan <- true
+	}()
+
+	t.Log("Client: start observe")
+	res, err := client.Observe("coap+uart://any/o")
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	buf := bytes.Buffer{}
+	_, err = buf.ReadFrom(res.Body)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if buf.String() != "1" {
+		t.Errorf("Expected body '1' but got %s", buf.String())
+	}
+
+	//	<-time.After(4 * time.Second)
+	_, err = client.CancelObserve(res)
+	if err != nil {
+		t.Error("Error: " + err.Error())
+	}
+
+	<-asyncDoneChan
+
+	t.Log("Waiting for shutdown")
+
+	ValidateCleanConnection(t, testCon)
 }

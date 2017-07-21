@@ -9,6 +9,30 @@ type recordingTransport struct {
 	req *Request
 }
 
+func TestChans(t *testing.T) {
+	var ch chan bool
+	ch = make(chan bool, 1) // Read on null chan would fail or default with case.
+
+	ch <- true
+	close(ch)
+
+	// Receive value from before close works
+	b, ok := <-ch
+	t.Logf("Read on closed chan: result = %v, OK = %v", b, ok)
+
+	select {
+	case b, ok := <-ch:
+		t.Logf("Read on closed chan: result = %v, OK = %v", b, ok)
+	default:
+		t.Logf("Read on closed chan: default!")
+	}
+
+	select {
+	case b, ok := <-ch:
+		t.Logf("Read on closed chan: result = %v, OK = %v", b, ok)
+	}
+}
+
 func (t *recordingTransport) RoundTrip(req *Request) (resp *Response, err error) {
 	t.req = req
 	return nil, errors.New("dummy impl")

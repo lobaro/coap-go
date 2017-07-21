@@ -31,6 +31,7 @@ type InteractionStore interface {
 	FindInteraction(token Token, msgId MessageId) *Interaction
 	StartInteraction(conn Connection, msg *coapmsg.Message) *Interaction
 	RemoveInteraction(ia *Interaction)
+	InteractionCount() int
 }
 
 // Implemented by connections
