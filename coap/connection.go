@@ -29,7 +29,7 @@ type Connection interface {
 
 type InteractionStore interface {
 	FindInteraction(token Token, msgId MessageId) *Interaction
-	AddInteraction(ia *Interaction)
+	StartInteraction(conn Connection, msg *coapmsg.Message) *Interaction
 	RemoveInteraction(ia *Interaction)
 }
 

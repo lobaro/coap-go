@@ -83,6 +83,12 @@ func logMsg(msg *coapmsg.Message, info string) {
 	msgLogEntry(msg).Debug("CoAP message: " + info)
 }
 
+// RoundTrip takes care about one Request / Response roundtrip
+// 1) Find / Open new Connection
+// 2) Find / Create new interaction
+// 3) Use interaction to do the actual RoundTip
+// 4a) - No Observe -> Release interaction, close Connection if no interactions running
+// 4b) - Observe -> Keep interaction until timeout
 func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 
 	if req == nil {
@@ -120,7 +126,7 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	// Start an interaction and send the request
 	//###########################################
 
-	// When canceling an observer we must reuse the interaction
+	// Debug output for serial connections only
 	if serialCon, ok := conn.(*serialConnection); ok {
 		tokens := make([]string, 0)
 		for _, ia := range serialCon.interactions {
@@ -132,14 +138,14 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 
 	}
 
+	// When canceling an observer we must reuse the interaction
 	ia := conn.FindInteraction(req.Token, MessageId(0))
 	if ia == nil {
-		// Gets deleted when interaction closes
-		ia = startInteraction(conn, reqMsg)
+		ia = conn.StartInteraction(conn, reqMsg)
 	}
 
 	if ia.receiveCh == nil {
-		log.Error("Interaction receiveCh is nil!!!") // TODO: REMOVE ME
+		log.Fatal("Interaction receiveCh is nil!!!") // TODO: REMOVE ME?
 	}
 
 	resMsg, err := ia.RoundTrip(req.Context(), reqMsg)
@@ -170,20 +176,6 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	}
 
 	return res, nil
-}
-
-func startInteraction(conn Connection, reqMsg *coapmsg.Message) *Interaction {
-	ia := &Interaction{
-		req:       *reqMsg,
-		conn:      conn,
-		receiveCh: make(chan *coapmsg.Message, 0),
-	}
-
-	log.WithField("Token", ia.Token()).Debug("Start interaction")
-
-	conn.AddInteraction(ia)
-
-	return ia
 }
 
 func handleInteractionNotifyMessage(ia *Interaction, req *Request, currResponse *Response) {

@@ -43,10 +43,6 @@ type Interactions struct {
 	interactions []*Interaction
 }
 
-func (ias *Interactions) AddInteraction(ia *Interaction) {
-	ias.interactions = append(ias.interactions, ia)
-}
-
 func (ias *Interactions) RemoveInteraction(interaction *Interaction) {
 	for i, ia := range ias.interactions {
 		if ia == interaction {
@@ -56,6 +52,20 @@ func (ias *Interactions) RemoveInteraction(interaction *Interaction) {
 			return
 		}
 	}
+}
+
+func (ias *Interactions) StartInteraction(conn Connection, reqMsg *coapmsg.Message) *Interaction {
+	ia := &Interaction{
+		req:       *reqMsg,
+		conn:      conn,
+		receiveCh: make(chan *coapmsg.Message, 0),
+	}
+
+	log.WithField("Token", ia.Token()).Debug("Start interaction")
+
+	ias.interactions = append(ias.interactions, ia)
+
+	return ia
 }
 
 func (ias *Interactions) FindInteraction(token Token, msgId MessageId) *Interaction {
