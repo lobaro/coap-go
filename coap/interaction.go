@@ -139,9 +139,9 @@ func isObserveResponse(msg *coapmsg.Message) bool {
 }
 
 func (ia *Interaction) HandleMessage(msg *coapmsg.Message) {
-	log.WithField("observing", ia.IsObserving()).Debug("Interaction handle message...")
-
 	if isObserveResponse(msg) {
+		log.WithField("observing", ia.IsObserving()).Debug("Interaction handle observe message...")
+
 		select {
 		case ia.receiveObserveCh <- msg:
 		case <-time.After(1 * time.Second):
@@ -150,6 +150,7 @@ func (ia *Interaction) HandleMessage(msg *coapmsg.Message) {
 			ia.Close()
 		}
 	} else {
+		log.WithField("observing", ia.IsObserving()).Debug("Interaction handle message...")
 		select {
 		case ia.receiveCh <- msg:
 		case <-time.After(1 * time.Second):
@@ -158,7 +159,7 @@ func (ia *Interaction) HandleMessage(msg *coapmsg.Message) {
 			ia.Close()
 		}
 	}
-	log.Debug("Interaction handle message. DONE.")
+	log.WithField("observing", ia.IsObserving()).Debug("Interaction handle message. DONE.")
 
 }
 
