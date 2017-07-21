@@ -114,11 +114,15 @@ func (t *TransportUart) Ping(host string) (ok bool, err error) {
 
 	res, err := ia.RoundTrip(ctxWithTimeout, &ping)
 
-	if res.Type == coapmsg.Reset {
+	if res != nil && res.Type == coapmsg.Reset {
 		// We expect this error
 		return true, nil
 	} else {
-		return false, errors.New(fmt.Sprintf("Expected RST but got %s. Error: %s", res.Type.String(), err))
+		resTypeStr := "nil"
+		if res != nil {
+			resTypeStr = res.Type.String()
+		}
+		return false, errors.New(fmt.Sprintf("Expected RST but got %s. Error: %s", resTypeStr, err))
 	}
 
 }
