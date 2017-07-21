@@ -51,8 +51,7 @@ func (c *UartConnector) Connect(host string) (Connection, error) {
 		}
 
 		if c, ok := con.(*serialConnection); (ok && c.portName == portName) || portName == "any" {
-			// TODO: Should we force a reopen or flush here? It already happened that we received old garbage.
-			log.WithField("Port", c.portName).Info("Reuseing Serial Port")
+			log.WithField("Port", c.portName).Debug("Using already open serial port")
 			return c, nil
 		}
 	}

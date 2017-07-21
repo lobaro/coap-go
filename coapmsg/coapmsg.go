@@ -171,6 +171,15 @@ func NewMessage() Message {
 	}
 }
 
+// NewPing creates a an Empty Confirmable message (CoAP ping)
+func NewPing(messageId uint16) Message {
+	return Message{
+		Type:      Confirmable,
+		Code:      Empty,
+		MessageID: messageId,
+	}
+}
+
 func NewAck(messageId uint16) Message {
 	return Message{
 		Type:      Acknowledgement,
@@ -188,7 +197,7 @@ func NewRst(messageId uint16) Message {
 }
 
 func (m *Message) String() string {
-	str := fmt.Sprintf(`coap.Message{Code:"%s", Type:"%s", MsgId:%d, Token:%v, Options:"%s", Payload:"%s"}`, m.Code, m.Type, m.MessageID, m.Token, m.Options(), m.Payload)
+	str := fmt.Sprintf(`coap.Message{Code:%s, Type:%s, MsgId:%d, Token:%v, Options:%s, Payload:%s}`, m.Code, m.Type, m.MessageID, m.Token, m.Options(), m.Payload)
 	return str
 }
 

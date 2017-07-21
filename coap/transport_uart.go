@@ -10,8 +10,13 @@ import (
 	"sync"
 	"time"
 
+	"net/url"
+
+	"context"
+
 	"github.com/Lobaro/coap-go/coapmsg"
 	"github.com/Sirupsen/logrus"
+	"github.com/emirpasic/gods/sets/hashset"
 )
 
 type StopBits byte
@@ -88,6 +93,36 @@ func logMsg(msg *coapmsg.Message, info string) {
 	msgLogEntry(msg).Debug("CoAP message: " + info)
 }
 
+// Ping sends a CoAP ping
+func (t *TransportUart) Ping(host string) (ok bool, err error) {
+	ping := coapmsg.NewPing(t.nextMessageId())
+
+	u, err := url.Parse(host)
+	if err != nil {
+		return
+	}
+
+	conn, err := t.Connecter.Connect(u.Host)
+	if err != nil {
+		return
+	}
+
+	ia := conn.StartInteraction(conn, &ping)
+	defer ia.Close()
+
+	ctxWithTimeout, _ := context.WithTimeout(context.Background(), 3*time.Second)
+
+	res, err := ia.RoundTrip(ctxWithTimeout, &ping)
+
+	if res.Type == coapmsg.Reset {
+		// We expect this error
+		return true, nil
+	} else {
+		return false, errors.New(fmt.Sprintf("Expected RST but got %s. Error: %s", res.Type.String(), err))
+	}
+
+}
+
 // RoundTrip takes care about one Request / Response roundtrip
 // 1) Find / Open new Connection
 // 2) Find / Create new interaction
@@ -143,7 +178,7 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 
 	}
 
-	// When canceling an observer we must reuse the interaction
+	// When canceling an observer we must reuse the interaction based on the Token only
 	ia := conn.FindInteraction(req.Token, MessageId(0))
 	if ia == nil {
 		ia = conn.StartInteraction(conn, reqMsg)
@@ -168,11 +203,46 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 		// Must create chan before returning
 		res.next = make(chan *Response, 0)
 		go handleInteractionNotifyMessage(ia, req, res)
+		go t.pingLoop(ia.conn, req.URL.Scheme+"://"+req.URL.Host)
 	} else {
 		ia.Close()
 	}
 
 	return res, nil
+}
+
+var pingConnections = hashset.New()
+var pingMu = sync.Mutex{}
+
+func (t *TransportUart) pingLoop(conn Connection, host string) {
+	pingMu.Lock()
+	if pingConnections.Contains(conn) {
+		logrus.Debug("Connection already pinged regularly")
+		return
+	}
+	pingConnections.Add(conn)
+	defer func() {
+		pingMu.Lock()
+		pingConnections.Remove(conn)
+		pingMu.Unlock()
+	}()
+	pingMu.Unlock()
+
+	logrus.WithField("host", host).Debug("Start to ping host")
+	for {
+		if conn.Closed() {
+			logrus.WithField("host", host).Debug("Stop pinging, connection closed!")
+			return
+		}
+		<-time.After(30 * time.Second)
+		logrus.WithField("host", host).Info("Ping")
+		ok, err := t.Ping(host)
+		if !ok {
+			logrus.WithError(err).WithField("host", host).Error("Ping failed")
+		} else {
+			logrus.WithField("host", host).Debug("Ping okay!")
+		}
+	}
 }
 
 // Takes responsibility to close ia

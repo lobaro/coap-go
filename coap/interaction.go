@@ -94,8 +94,8 @@ func (ias *Interactions) FindInteraction(token Token, msgId MessageId) *Interact
 			return ia
 		}
 		// For empty tokens the message Id must match
-		// An ACK is sent by the server to confirm a CON but carries no token
-		// TODO: Check also message type?
+		// An ACK/RST is sent by the server as response for a CON but carries no token
+		// TODO: Check also message type to only match ACK/RST here?
 		if len(token) == 0 && ia.lastMessageId == msgId {
 			return ia
 		}
@@ -232,13 +232,13 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 		withAckTimeout, _ := context.WithTimeout(ctx, ackTimeout())
 		resMsg, err = ia.readMessage(withAckTimeout)
 		if err != nil {
-			return nil, wrapError(err, ERROR_READ_ACK)
+			return resMsg, wrapError(err, ERROR_READ_ACK)
 		}
 		if err = validateMessageId(reqMsg, resMsg); err != nil {
-			return nil, wrapError(err, ERROR_READ_ACK)
+			return resMsg, wrapError(err, ERROR_READ_ACK)
 		}
 		if resMsg.Type != coapmsg.Acknowledgement {
-			return nil, errors.New("Expected ACK response but got " + reqMsg.Type.String())
+			return resMsg, errors.New("Expected ACK response but got " + reqMsg.Type.String())
 		}
 
 		// TODO: Handle Types: RST correctly - now we just don't care
