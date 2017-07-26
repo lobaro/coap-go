@@ -3,17 +3,14 @@ package coap
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
-	serial "go.bug.st/serial.v1"
-
-	"fmt"
-
-	"strings"
-
 	"github.com/Lobaro/slip"
+	"go.bug.st/serial.v1"
 )
 
 // UartKeepAliveInterval defines how often the serial port is reopened.

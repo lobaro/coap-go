@@ -66,14 +66,19 @@ func sendMessage(conn Connection, msg *coapmsg.Message) error {
 }
 
 func receiveLoop(ctx context.Context, conn Connection) {
+	start := time.Now()
 	for {
 		//log.Info("Receive loop")
 		if ctx.Err() != nil {
 			log.WithError(ctx.Err()).Info("Context done. Stopped receive loop.")
 			return
 		}
+		duration := time.Since(start)
+		if duration > 100*time.Millisecond {
+			log.WithField("duration", duration).Warn("Read took longer than 100ms")
+		}
 		msg, err := readMessage(ctx, conn)
-
+		start = time.Now()
 		if err != nil {
 			// Do not close the connection, this might happen during reopening of the serial port
 			// TODO: An "Access is denied." error indicates that the UART is not reachable. So reopening would be an option
@@ -97,7 +102,12 @@ func receiveLoop(ctx context.Context, conn Connection) {
 				log.WithError(err).Warn("Failed to send RST")
 			}
 		} else {
+			handleStart := time.Now()
 			ia.HandleMessage(msg)
+			duration = time.Since(handleStart)
+			if duration > 100*time.Millisecond {
+				log.WithField("duration", duration).Warn("Handle Message took longer than 100ms")
+			}
 		}
 
 	}

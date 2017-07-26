@@ -185,7 +185,7 @@ func TestMany(t *testing.T) {
 		go func() {
 			TestRequestResponsePostponed(t)
 			TestRequestResponsePiggyback(t)
-			//TestClientObserve(t)
+			TestClientObserve(t)
 			wg.Done()
 		}()
 	}
@@ -249,7 +249,7 @@ func RunRequestResponsePostponed(t *testing.T, trans *TransportUart) {
 			return
 		}
 		if msg.PathString() != "foo" {
-			t.Errorf("Expected empty PathString but was %s", msg.PathString())
+			t.Errorf("Error: Expected empty PathString but was %s", msg.PathString())
 		}
 
 		// Send ack
@@ -282,7 +282,7 @@ func RunRequestResponsePostponed(t *testing.T, trans *TransportUart) {
 			return
 		}
 		if msg.Type != coapmsg.Acknowledgement {
-			t.Errorf("Expected Acknowledgement but got %s", msg.Type.String())
+			t.Errorf("Error: Expected Acknowledgement but got %s", msg.Type.String())
 		}
 
 		asyncDoneChan <- true
@@ -306,10 +306,10 @@ func RunRequestResponsePostponed(t *testing.T, trans *TransportUart) {
 		}
 		t.Logf("Response: [%s] %s", coapmsg.COAPCode(res.StatusCode).String(), body.String())
 		if body.String() != "test" {
-			t.Error("Expected response payload 'test' but got " + body.String())
+			t.Error("Error: Expected response payload 'test' but got " + body.String())
 		}
 		if res.StatusCode != coapmsg.Content.Number() {
-			t.Errorf("Expected response code %d got %d", coapmsg.Content.Number(), res.StatusCode)
+			t.Errorf("Error: Expected response code %d got %d", coapmsg.Content.Number(), res.StatusCode)
 		}
 	}
 
@@ -317,12 +317,12 @@ func RunRequestResponsePostponed(t *testing.T, trans *TransportUart) {
 	case <-asyncDoneChan:
 		t.Log("Test Done.")
 	case <-time.After(10 * time.Second):
-		t.Error("Test Failed: Timeout")
+		t.Error("Error: Test Failed: Timeout")
 	}
 	ValidateCleanConnection(t, testCon)
 
 	if len(testCon.conn.interactions) != 0 {
-		t.Errorf("Interactions not cleaned up! len: %d", len(testCon.conn.interactions))
+		t.Errorf("Error: Interactions not cleaned up! len: %d", len(testCon.conn.interactions))
 	}
 }
 

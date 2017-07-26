@@ -75,8 +75,8 @@ func (ias *Interactions) StartInteraction(conn Connection, reqMsg *coapmsg.Messa
 	ia := &Interaction{
 		req:              *reqMsg,
 		conn:             conn,
-		receiveCh:        make(chan *coapmsg.Message, 0),
-		receiveObserveCh: make(chan *coapmsg.Message, 0),
+		receiveCh:        make(chan *coapmsg.Message, 10),
+		receiveObserveCh: make(chan *coapmsg.Message, 10),
 	}
 
 	log.WithField("Token", ia.Token()).Debug("Start interaction")
@@ -135,16 +135,24 @@ func (ia *Interaction) Close() {
 }
 
 func isObserveResponse(msg *coapmsg.Message) bool {
-	return (msg.IsConfirmable() || msg.IsNonConfirmable()) && msg.Options().Get(coapmsg.Observe).AsUInt16() > 0
+	// 3.2.  Notifications
+	// Notifications typically have a 2.05 (Content) response code.  They
+	// include an Observe Option [...]
+
+	// Non-2.xx responses do not include an Observe Option.
+	// TODO: Non-2.xx observe responses are NOT handled correctly at the moment
+	return (msg.IsConfirmable() || msg.IsNonConfirmable()) && msg.Options().Get(coapmsg.Observe).IsSet()
 }
 
 func (ia *Interaction) HandleMessage(msg *coapmsg.Message) {
+	start := time.Now()
 	if isObserveResponse(msg) {
 		log.WithField("observing", ia.IsObserving()).Debug("Interaction handle observe message...")
 
 		select {
 		case ia.receiveObserveCh <- msg:
-		case <-time.After(1 * time.Second):
+		default:
+			//case <-time.After(1 * time.Second):
 			// TODO: We should avoid this. find the reason why it happens and maybe buffer the channel
 			log.Error("Interaction did not handled incoming ACK/RST message. Discarding & Close interaction.")
 			ia.Close()
@@ -153,14 +161,15 @@ func (ia *Interaction) HandleMessage(msg *coapmsg.Message) {
 		log.WithField("observing", ia.IsObserving()).Debug("Interaction handle message...")
 		select {
 		case ia.receiveCh <- msg:
-		case <-time.After(1 * time.Second):
+		default:
+			//case <-time.After(1 * time.Second):
 			// TODO: We should avoid this. find the reason why it happens and maybe buffer the channel
 			log.Error("Interaction did not handled incoming message. Discarding & Close interaction.")
 			ia.Close()
 		}
 	}
-	log.WithField("observing", ia.IsObserving()).Debug("Interaction handle message. DONE.")
-
+	duration := time.Since(start)
+	log.WithField("observing", ia.IsObserving()).WithField("duration", duration).Debug("Interaction handle message. DONE.")
 }
 
 var READ_MESSAGE_CTX_DONE = errors.New("Read timeout")
@@ -200,6 +209,12 @@ var ERROR_READ_ACK = "Failed to read ACK"
 func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (resMsg *coapmsg.Message, err error) {
 	ia.roundTripMu.Lock()
 	defer ia.roundTripMu.Unlock()
+
+	// TODO: The one and only thing we can possibly do while ia.IsObserving() is cancelling the observe
+	// This said, all responses MUST be handled by the waitForNotify() method, even an ACK to the cancel request
+	// this might make resending the cancelation request a bit more tricky but resending is not implemented yet
+	// Any request that does not intent to cancel the observe while ia.IsObserving() should be rejected with an error
+	// The intent to cancel the observe must be send to the waitForNotify() method in order to be able to act accordingly
 
 	// This is a cancel observe request.
 	if reqMsg.Options().Get(coapmsg.Observe).AsUInt8() > 0 {
