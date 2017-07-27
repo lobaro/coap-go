@@ -40,10 +40,8 @@ func (r *SlipMuxReader) ReadPacket() ([]byte, bool, error) {
 		return packet, false, err
 	}
 	// silently ignore unhandled packets.
-	// TODO: This should be debug:
-	if len(packet) > 0 {
-		log.WithField("packet", packet).WithField("frameType", frame).Warn("Unknown SlipMux packet")
-	}
+	log.WithField("packet", packet).WithField("frameType", frame).Debug("Unknown SlipMux packet")
+
 	return nil, false, err
 }
 

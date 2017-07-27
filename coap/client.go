@@ -108,6 +108,10 @@ func Get(url string) (*Response, error) {
 	return DefaultClient.Get(url)
 }
 
+func Ping(host string) (*Response, error) {
+	return DefaultClient.Ping(host)
+}
+
 func Observe(url string) (*Response, error) {
 	return DefaultClient.Observe(url)
 }
@@ -144,6 +148,19 @@ func (c *Client) Do(req *Request) (res *Response, err error) {
 // DefaultClient.Do.
 func (c *Client) Get(url string) (*Response, error) {
 	req, err := NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return c.Do(req)
+}
+
+// Ping issues a CoAP Ping to the specified URL.
+// Which is effectively and empty CON message that will be answered with RST
+//
+// Host should be only scheme + hostname, no URL query
+// to produce smaller ping messages
+func (c *Client) Ping(host string) (*Response, error) {
+	req, err := NewRequest("PING", host, nil)
 	if err != nil {
 		return nil, err
 	}

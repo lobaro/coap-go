@@ -252,8 +252,14 @@ func (ia *Interaction) RoundTrip(ctx context.Context, reqMsg *coapmsg.Message) (
 		if err = validateMessageId(reqMsg, resMsg); err != nil {
 			return resMsg, wrapError(err, ERROR_READ_ACK)
 		}
+
+		// For empty request codes (CoAP ping) we expect a RST
+		if reqMsg.Code == coapmsg.Empty && resMsg.Type == coapmsg.Reset {
+			return resMsg, nil
+		}
+
 		if resMsg.Type != coapmsg.Acknowledgement {
-			return resMsg, errors.New("Expected ACK response but got " + reqMsg.Type.String())
+			return resMsg, errors.New("Expected ACK response but got " + resMsg.Type.String())
 		}
 
 		// TODO: Handle Types: RST correctly - now we just don't care

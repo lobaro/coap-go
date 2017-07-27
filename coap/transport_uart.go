@@ -94,7 +94,7 @@ func logMsg(msg *coapmsg.Message, info string) {
 }
 
 // Ping sends a CoAP ping
-func (t *TransportUart) Ping(host string) (ok bool, err error) {
+func (t *TransportUart) ping(host string) (ok bool, err error) {
 	ping := coapmsg.NewPing(t.nextMessageId())
 
 	u, err := url.Parse(host)
@@ -141,7 +141,7 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 
 	// The client might set a specific token, e.g. to cancel an observe.
 	// If there is no token set we create a random token.
-	if len(req.Token) == 0 {
+	if len(req.Token) == 0 && req.Method != "PING" {
 		req.Token = t.TokenGenerator.NextToken()
 	}
 
@@ -207,7 +207,10 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 		// Must create chan before returning
 		res.next = make(chan *Response, 0)
 		go handleInteractionNotifyMessage(ia, req, res)
-		go t.pingLoop(ia.conn, req.URL.Scheme+"://"+req.URL.Host)
+
+		if PingOpenConnectionsInterval.Nanoseconds() > 0 {
+			go t.pingLoop(ia.conn, req.URL.Scheme+"://"+req.URL.Host)
+		}
 	} else {
 		ia.Close()
 	}
@@ -215,22 +218,26 @@ func (t *TransportUart) RoundTrip(req *Request) (res *Response, err error) {
 	return res, nil
 }
 
+var PingOpenConnectionsInterval = 0 * time.Second
+
 var pingConnections = hashset.New()
-var pingMu = sync.Mutex{}
+var pingMu = sync.Mutex{} // Guards pingConnections
 
 func (t *TransportUart) pingLoop(conn Connection, host string) {
 	pingMu.Lock()
 	if pingConnections.Contains(conn) {
+		pingMu.Unlock()
 		logrus.Debug("Connection already pinged regularly")
 		return
 	}
 	pingConnections.Add(conn)
+	pingMu.Unlock()
+
 	defer func() {
 		pingMu.Lock()
 		pingConnections.Remove(conn)
 		pingMu.Unlock()
 	}()
-	pingMu.Unlock()
 
 	logrus.WithField("host", host).Debug("Start to ping host")
 	for {
@@ -238,9 +245,9 @@ func (t *TransportUart) pingLoop(conn Connection, host string) {
 			logrus.WithField("host", host).Debug("Stop pinging, connection closed!")
 			return
 		}
-		<-time.After(30 * time.Second)
+		<-time.After(PingOpenConnectionsInterval)
 		logrus.WithField("host", host).Info("Ping")
-		ok, err := t.Ping(host)
+		ok, err := t.ping(host)
 		if !ok {
 			logrus.WithError(err).WithField("host", host).Error("Ping failed")
 		} else {
@@ -319,18 +326,23 @@ func (t *TransportUart) buildRequestMessage(req *Request) (*coapmsg.Message, err
 		Token:     req.Token,
 	}
 	msg.SetOptions(req.Options)
-	msg.SetPathString(req.URL.EscapedPath())
+	if req.URL != nil {
+		path := req.URL.EscapedPath()
+		if len(path) > 0 {
+			msg.SetPathString(path)
+		}
 
-	msg.Options().Del(coapmsg.URIQuery)
-	for _, q := range strings.Split(req.URL.RawQuery, "&") {
-		if q != "" {
-			err := msg.Options().Add(coapmsg.URIQuery, q)
-			if err != nil {
-				log.
-					WithError(err).
-					WithField("option", coapmsg.URIQuery).
-					WithField("value", q).
-					Warn("Failed to add option value to request")
+		msg.Options().Del(coapmsg.URIQuery)
+		for _, q := range strings.Split(req.URL.RawQuery, "&") {
+			if q != "" {
+				err := msg.Options().Add(coapmsg.URIQuery, q)
+				if err != nil {
+					log.
+						WithError(err).
+						WithField("option", coapmsg.URIQuery).
+						WithField("value", q).
+						Warn("Failed to add option value to request")
+				}
 			}
 		}
 	}
@@ -356,20 +368,4 @@ func (t *TransportUart) nextMessageId() uint16 {
 	t.lastMsgId++
 	msgId := t.lastMsgId
 	return msgId
-}
-
-var methodToCodeTable = map[string]coapmsg.COAPCode{
-	"GET":    coapmsg.GET,
-	"POST":   coapmsg.POST,
-	"PUT":    coapmsg.PUT,
-	"DELETE": coapmsg.DELETE,
-}
-
-// methodToCode returns the code for a given CoAP method.
-// Default is GET, use ValidMethod to ensure a valid method.
-func methodToCode(method string) coapmsg.COAPCode {
-	if code, ok := methodToCodeTable[method]; ok {
-		return code
-	}
-	return coapmsg.GET
 }

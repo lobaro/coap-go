@@ -173,16 +173,26 @@ func (r *Request) closeBody() {
 	}
 }
 
-var validMethods = []string{"GET", "POST", "PUT", "DELETE"}
+var methodToCodeTable = map[string]coapmsg.COAPCode{
+	"PING":   coapmsg.Empty,
+	"GET":    coapmsg.GET,
+	"POST":   coapmsg.POST,
+	"PUT":    coapmsg.PUT,
+	"DELETE": coapmsg.DELETE,
+}
+
+// methodToCode returns the code for a given CoAP method.
+// Default is Empty, use ValidMethod to ensure a valid method.
+func methodToCode(method string) coapmsg.COAPCode {
+	if code, ok := methodToCodeTable[method]; ok {
+		return code
+	}
+	return coapmsg.Empty
+}
 
 func ValidMethod(method string) bool {
-	for _, m := range validMethods {
-		if method == m {
-			return true
-		}
-	}
-
-	return false
+	_, ok := methodToCodeTable[method]
+	return ok
 }
 
 type badStringError struct {
