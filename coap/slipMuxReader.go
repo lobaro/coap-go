@@ -39,8 +39,14 @@ func (r *SlipMuxReader) ReadPacket() ([]byte, bool, error) {
 		if frame == slip.FRAME_COAP {
 			return packet, false, err
 		}
+
+		if err != nil {
+			return packet, false, err
+		}
+
 		// silently ignore unhandled packets.
-		log.WithField("packet", packet).WithField("frameType", frame).Debug("Unknown SlipMux packet")
+		log.WithError(err).WithField("packet", packet).WithField("frameType", frame).Info("Unknown SlipMux packet")
+
 		continue
 	}
 }
