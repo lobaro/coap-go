@@ -118,7 +118,9 @@ func readMessage(ctx context.Context, reader PacketReader) (*coapmsg.Message, er
 	var err error
 	// Skip empty packets
 	for ; len(packet) == 0; packet, err = readPacket(ctx, reader) {
-
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if err != nil {

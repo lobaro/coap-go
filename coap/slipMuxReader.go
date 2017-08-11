@@ -2,7 +2,6 @@ package coap
 
 import (
 	"io"
-
 	"strings"
 
 	"github.com/Lobaro/slip"
@@ -27,22 +26,23 @@ func NewSlipMuxWriter(writer io.Writer) *SlipMuxWriter {
 }
 
 func (r *SlipMuxReader) ReadPacket() ([]byte, bool, error) {
-	packet, frame, err := r.r.ReadPacket()
+	for {
+		packet, frame, err := r.r.ReadPacket()
 
-	if frame == slip.FRAME_DIAGNOSTIC {
-		if SlipMuxLogDiagnostic {
-			log.WithField("message", strings.TrimSpace(string(packet))).Debug("SlipMux Diagnostic")
+		if frame == slip.FRAME_DIAGNOSTIC {
+			if SlipMuxLogDiagnostic {
+				log.WithField("message", strings.TrimSpace(string(packet))).Debug("SlipMux Diagnostic")
+			}
+			continue
 		}
-		return nil, false, nil
-	}
 
-	if frame == slip.FRAME_COAP {
-		return packet, false, err
+		if frame == slip.FRAME_COAP {
+			return packet, false, err
+		}
+		// silently ignore unhandled packets.
+		log.WithField("packet", packet).WithField("frameType", frame).Debug("Unknown SlipMux packet")
+		continue
 	}
-	// silently ignore unhandled packets.
-	log.WithField("packet", packet).WithField("frameType", frame).Debug("Unknown SlipMux packet")
-
-	return nil, false, err
 }
 
 func (w *SlipMuxWriter) WritePacket(p []byte) (err error) {
