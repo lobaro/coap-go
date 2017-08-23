@@ -1,4 +1,20 @@
-# Lobaro CoAP GoLang adapter
+# Lobaro CoAP for GoLang
+
+This repository contains two parts: The **CoAP Client** and a **GoLang Server adapter**. The client focuses on RS232 connections where data is send via [Slip](https://tools.ietf.org/rfc/rfc1055.txt) and [SlipMUX](https://tools.ietf.org/html/draft-bormann-t2trg-slipmux-01)
+
+# GoLang CoAP RS232 Client 
+Currently only RS232 is supported. Transports for other Protocols like TCP/IP and UDP are planned.
+
+**Install:**
+```
+go get -u github.com/lobaro/coap-go/coap
+```
+
+The package is strctured similiar to the http package and tries to follow go idematic coding styles.
+
+# GoLang Server adapter for lobaro-coap
+
+**A word of warning:** While the C code works fine and is already used in several projects, the Go wrapper is still under construction. We might even considder to reimplement the server in Go rather than wrapping the C code.
 
 [Lobaro CoAP](https://github.com/lobaro/lobaro-coap) provides a highly portable CoAP stack for Client and Server running on almost any hardware.
 
