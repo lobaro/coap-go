@@ -259,7 +259,10 @@ func (t *TransportUart) pingLoop(conn Connection, host string) {
 // Takes responsibility to close ia
 // res.next will be used to send responses to the client
 func handleInteractionNotifyMessage(ia *Interaction, initialReq *Request, initialRes *Response) {
-	defer close(initialRes.next)
+	defer func() {
+		//log.Debug("Closing Next chan")
+		close(initialRes.next)
+	}()
 
 	// When we close the interaction too early,
 	// a potential ACK on the cancel observe request can not be received anymore
@@ -280,6 +283,7 @@ func handleInteractionNotifyMessage(ia *Interaction, initialReq *Request, initia
 		resMsg, ok := <-ia.NotificationCh
 		if ok {
 			res := buildResponse(initialReq, resMsg)
+			res.next = initialRes.next
 			select {
 			case initialRes.next <- res: // MUST NOT be buffered, else we can't detect a not listening client
 			case <-time.After(5 * time.Second): // Give some time for the client to handle res.Next()
