@@ -1,10 +1,11 @@
 package main
 
 import (
-	"gitlab.com/lobaro/lobaro-coap-go/coap"
 	"log"
 	"net"
 	"time"
+
+	"github.com/Lobaro/coap-go/coap"
 )
 
 func main() {

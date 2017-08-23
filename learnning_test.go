@@ -4,11 +4,12 @@ import (
 	"net"
 	"testing"
 
-	"gitlab.com/lobaro/lobaro-coap-go/coap"
-	"gitlab.com/lobaro/lobaro-coap-go/coapmsg"
+	coap "github.com/Lobaro/coap-go/coap-old"
+	"github.com/Lobaro/coap-go/coapmsg"
 )
 
 func TestSetupSocket(t *testing.T) {
+
 	socket := coap.CreateSocket(42)
 
 	if socket.IfID != 42 {
@@ -65,7 +66,7 @@ func TestHandle_Get_NotFound_Request(t *testing.T) {
 		Payload:   []byte("Hello World"),
 	}
 	// TODO: c coap parser does not work without options?
-	getMsg.AddOption(coapmsg.URIPath, "/test")
+	getMsg.Options().Set(coapmsg.URIPath, "/test")
 
 	msgBytes, err := getMsg.MarshalBinary()
 	if err != nil {
@@ -106,7 +107,7 @@ func Fail_TestHandle_Confirmable_Get_Found_Request(t *testing.T) {
 		Payload:   []byte("Hello World"),
 	}
 	// TODO: c coap parser does not work without options?
-	getMsg.AddOption(coapmsg.URIPath, "/.well-known/core")
+	getMsg.Options().Set(coapmsg.URIPath, "/.well-known/core")
 
 	msgBytes, err := getMsg.MarshalBinary()
 	if err != nil {
