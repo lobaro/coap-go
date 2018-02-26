@@ -38,6 +38,7 @@ type Response struct {
 	// Next is a channel for observe requests that contains the next
 	// response from the server when the resource does change.
 	// OBSERVE_TIMEOUT is the longest possible observe duration.
+	// TODO: OBSERVE_TIMEOUT is not implemented yet
 	//
 	// To stop the observation just send a new get request with
 	// observe option set to 1 (one).

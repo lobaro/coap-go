@@ -227,7 +227,7 @@ func (t *TransportUart) pingLoop(conn Connection, host string) {
 	pingMu.Lock()
 	if pingConnections.Contains(conn) {
 		pingMu.Unlock()
-		logrus.Debug("Connection already pinged regularly")
+		log.Debug("Connection already pinged regularly")
 		return
 	}
 	pingConnections.Add(conn)
@@ -239,19 +239,19 @@ func (t *TransportUart) pingLoop(conn Connection, host string) {
 		pingMu.Unlock()
 	}()
 
-	logrus.WithField("host", host).Debug("Start to ping host")
+	log.WithField("host", host).Debug("Start to ping host")
 	for {
 		if conn.Closed() {
-			logrus.WithField("host", host).Debug("Stop pinging, connection closed!")
+			log.WithField("host", host).Debug("Stop pinging, connection closed!")
 			return
 		}
 		<-time.After(PingOpenConnectionsInterval)
-		logrus.WithField("host", host).Info("Ping")
+		log.WithField("host", host).Info("Ping")
 		ok, err := t.ping(host)
 		if !ok {
-			logrus.WithError(err).WithField("host", host).Error("Ping failed")
+			log.WithError(err).WithField("host", host).Error("Ping failed")
 		} else {
-			logrus.WithField("host", host).Debug("Ping okay!")
+			log.WithField("host", host).Debug("Ping okay!")
 		}
 	}
 }
