@@ -4,13 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
-
-	"time"
-
-	"sync"
-
 	"github.com/Lobaro/coap-go/coapmsg"
-	"github.com/Sirupsen/logrus"
+	"sync"
+	"time"
 )
 
 type Token []byte
@@ -113,14 +109,14 @@ func (ia *Interaction) Closed() bool {
 
 func (ia *Interaction) Close() {
 	if ia.closed {
-		logrus.WithField("token", ia.Token()).Warn("Interaction already closed.")
+		log.WithField("token", ia.Token()).Warn("Interaction already closed.")
 		return
 	}
 	log.WithField("token", ia.Token()).Debug("Closing interaction.")
 	ia.closed = true
 
 	if ia.StopListenForNotifications != nil {
-		logrus.Debug("Stop listening for Notifications.")
+		log.Debug("Stop listening for Notifications.")
 		ia.StopListenForNotifications()
 	}
 
@@ -129,7 +125,7 @@ func (ia *Interaction) Close() {
 
 	ia.conn.RemoveInteraction(ia)
 	if ia.conn.InteractionCount() == 0 {
-		logrus.Debug("No interactions left, closing connection.")
+		log.Debug("No interactions left, closing connection.")
 		ia.conn.Close()
 	}
 }
@@ -405,7 +401,7 @@ func (ia *Interaction) waitForNotify(ctx context.Context) {
 		}
 
 		if resMsg.Options().Get(coapmsg.Observe).IsNotSet() {
-			logrus.WithField("msg", resMsg.String()).Error("Got non observe response in observe handler")
+			log.WithField("msg", resMsg.String()).Error("Got non observe response in observe handler")
 		}
 
 		select {
