@@ -125,7 +125,7 @@ func (ia *Interaction) Close() {
 
 	ia.conn.RemoveInteraction(ia)
 	if ia.conn.InteractionCount() == 0 {
-		log.Debug("No interactions left, closing connection.")
+		log.WithField("port", ia.conn.Name()).Debug("No interactions left, closing connection.")
 		ia.conn.Close()
 	}
 }

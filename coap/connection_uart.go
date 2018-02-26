@@ -79,6 +79,10 @@ func (c *serialConnection) setPort(port SerialPort) {
 
 }
 
+func (c *serialConnection) Name() string {
+	return c.portName
+}
+
 func (c *serialConnection) Open() error {
 	// TODO: not sure what happens when we reopen a closed connection
 	oldName := c.portName

@@ -24,6 +24,7 @@ type Connection interface {
 	Close() error
 	Closed() bool
 
+	Name() string
 	//resetDeadline()
 }
 

@@ -25,6 +25,10 @@ func NewTestConnection(reader PacketReader, writer PacketWriter) *TestConnection
 	}
 }
 
+func (c *TestConnection) Name() string {
+	return "TestConnection"
+}
+
 func (c *TestConnection) Open() error {
 	c.closed = false
 
