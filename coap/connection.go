@@ -91,7 +91,8 @@ func receiveLoop(ctx context.Context, conn Connection) {
 			// We could always stop the receive loop before reopening and close the connection here
 			// This is not a warning, since it happens on every reconnect for blocking connections
 			log.WithError(err).Debug("Failed to receive message in receive loop")
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
+			start = time.Now()
 			continue
 		}
 		start = time.Now()
