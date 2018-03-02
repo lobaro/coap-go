@@ -79,7 +79,6 @@ func receiveLoop(ctx context.Context, conn Connection) {
 			log.WithField("duration", duration).Warn("Read took longer than 100ms")
 		}
 		msg, err := readMessage(ctx, conn)
-		start = time.Now()
 
 		if ctx.Err() != nil {
 			log.WithError(ctx.Err()).Debug("Context done while read message. Stopped receive loop.")
@@ -95,6 +94,7 @@ func receiveLoop(ctx context.Context, conn Connection) {
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
+		start = time.Now()
 
 		ia := conn.FindInteraction(Token(msg.Token), MessageId(msg.MessageID))
 		if ia == nil {

@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Lobaro/go-serial"
 	"github.com/Lobaro/slip"
-	"go.bug.st/serial.v1"
 )
 
 // UartKeepAliveInterval defines how often the serial port is reopened.

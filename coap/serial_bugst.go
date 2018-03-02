@@ -1,6 +1,6 @@
 package coap
 
-import "go.bug.st/serial.v1"
+import "github.com/Lobaro/go-serial"
 
 func serialStopBits(bits StopBits) serial.StopBits {
 	switch bits {
@@ -34,9 +34,11 @@ func serialParity(parity Parity) serial.Parity {
 
 func (c *UartConnector) newSerialMode() *serial.Mode {
 	return &serial.Mode{
-		BaudRate: c.Baud,
-		Parity:   serialParity(c.Parity),
-		StopBits: serialStopBits(c.StopBits),
-		DataBits: 8,
+		BaudRate:   c.Baud,
+		Parity:     serialParity(c.Parity),
+		StopBits:   serialStopBits(c.StopBits),
+		DataBits:   c.DataBits,
+		InitialDTR: c.InitialDTR, //true,
+		InitialRTS: c.InitialRTS, // false,
 	}
 }

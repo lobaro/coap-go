@@ -2,30 +2,38 @@ package coap
 
 import (
 	"sync"
-	"time"
 )
 
+var DefaultUartParams = UartParams{
+	Baud:       115200,
+	Parity:     ParityNone,
+	StopBits:   Stop1,
+	DataBits:   8,
+	InitialDTR: true,  // Good default for Lobaro Hardware
+	InitialRTS: false, // Good default for Lobaro Hardware
+}
+
+type UartParams struct {
+	// UART parameters. In future we might want to configure this per port.
+	Baud       int      // BaudRate
+	Parity     Parity   // Parity is the bit to use and defaults to ParityNone (no parity bit).
+	StopBits   StopBits // Number of stop bits to use. Default is 1 (1 stop bit).
+	DataBits   int
+	InitialDTR bool
+	InitialRTS bool
+}
+
 type UartConnector struct {
+	UartParams
 	connectMutex sync.Mutex
 	connections  []Connection
-
-	// UART parameters. In future we might want to configure this per port.
-	Baud        int           // BaudRate
-	ReadTimeout time.Duration // Total timeout
-	Size        byte          // Size is the number of data bits. If 0, DefaultSize is used.
-	Parity      Parity        // Parity is the bit to use and defaults to ParityNone (no parity bit).
-	StopBits    StopBits      // Number of stop bits to use. Default is 1 (1 stop bit).
 }
 
 func NewUartConnecter() *UartConnector {
 	return &UartConnector{
+		UartParams:   DefaultUartParams,
 		connectMutex: sync.Mutex{},
 		connections:  make([]Connection, 0),
-		Baud:         115200,
-		Parity:       ParityNone,
-		Size:         0,                      // TODO: Unused?
-		ReadTimeout:  time.Millisecond * 500, // TODO: Unused?
-		StopBits:     Stop1,
 	}
 }
 
