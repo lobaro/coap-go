@@ -22,12 +22,26 @@ var UartUseSlipMux = false
 
 var UartFlushOnRead = false
 
+type serialPortCb func(port SerialPort)
+
+var onSerialPortOpen serialPortCb
+
+// SetOnSerialPortOpenHandler allows to set a callback that is called when ever a serial port is opened
+// it allows e.g. to adjust RTS and DTR lines, flush buffers or just get a reference to the port
+func SetOnSerialPortOpenHandler(cb serialPortCb) {
+	onSerialPortOpen = cb
+}
+
 type SerialPort interface {
 	io.Reader
 	io.Writer
 	io.Closer
 	ResetInputBuffer() error
 	ResetOutputBuffer() error
+	// SetDTR sets the modem status bit DataTerminalReady
+	SetDTR(dtr bool) error
+	// SetRTS sets the modem status bit RequestToSend
+	SetRTS(rts bool) error
 }
 
 // TODO: Use this struct instead of the bug.st one
@@ -95,6 +109,10 @@ func (c *serialConnection) Open() error {
 
 	if err != nil {
 		return wrapError(err, strings.TrimSpace("Failed to open serial port "+newPortName))
+	}
+
+	if onSerialPortOpen != nil {
+		onSerialPortOpen(port)
 	}
 
 	c.setPort(port)
