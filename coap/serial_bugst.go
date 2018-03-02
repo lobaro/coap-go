@@ -32,7 +32,7 @@ func serialParity(parity Parity) serial.Parity {
 	return serial.NoParity
 }
 
-func (c *UartConnector) newSerialMode() *serial.Mode {
+func (c *UartParams) toBugstSerialMode() *serial.Mode {
 	return &serial.Mode{
 		BaudRate:   c.Baud,
 		Parity:     serialParity(c.Parity),
@@ -41,4 +41,12 @@ func (c *UartConnector) newSerialMode() *serial.Mode {
 		InitialDTR: c.InitialDTR, //true,
 		InitialRTS: c.InitialRTS, // false,
 	}
+}
+
+func getPortsList() ([]string, error) {
+	return serial.GetPortsList()
+}
+
+func serialOpen(portName string, params UartParams) (SerialPort, error) {
+	return serial.Open(portName, params.toBugstSerialMode())
 }

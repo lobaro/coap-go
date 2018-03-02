@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Lobaro/go-serial"
 	"github.com/Lobaro/slip"
 )
 
@@ -54,7 +53,7 @@ type SerialMode struct {
 
 type serialConnection struct {
 	Interactions
-	mode     *serial.Mode
+	mode     UartParams
 	portName string
 	reader   PacketReader
 	writer   PacketWriter
@@ -71,10 +70,7 @@ type serialConnection struct {
 
 var ERR_CONNECTION_CLOSED = errors.New("Connection is closed")
 
-func newSerialConnection(portName string, mode *serial.Mode) *serialConnection {
-	if mode == nil {
-		panic("mode must not be nil")
-	}
+func newSerialConnection(portName string, mode UartParams) *serialConnection {
 	return &serialConnection{
 		portName: portName,
 		mode:     mode,
@@ -104,7 +100,7 @@ func (c *serialConnection) Open() error {
 	c.portName = newPortName
 	log.WithField("originalPort", oldName).
 		WithField("port", c.portName).
-		WithField("baud", c.mode.BaudRate).
+		WithField("baud", c.mode.Baud).
 		Info("Opening serial port ...")
 
 	if err != nil {
@@ -244,8 +240,8 @@ func (c *serialConnection) Closed() bool {
 // Last successful "any" port. Will be tried first before iterating
 var lastAny = ""
 
-func checkComPort(portName string, mode *serial.Mode) bool {
-	port, err := serial.Open(portName, mode)
+func checkComPort(portName string, mode UartParams) bool {
+	port, err := serialOpen(portName, mode)
 	if err != nil {
 		return false
 	} else {
@@ -278,9 +274,9 @@ func portlist() []string {
 
 // When portName is "any" the first available port is opened
 // the new port name is returned as newPortName
-func openComPort(portName string, mode *serial.Mode) (port SerialPort, newPortName string, err error) {
+func openComPort(portName string, mode UartParams) (port SerialPort, newPortName string, err error) {
 	if portName == "any" {
-		portNames, err := serial.GetPortsList()
+		portNames, err := getPortsList()
 		if err != nil {
 			return nil, portName, err
 		}
@@ -303,7 +299,7 @@ func openComPort(portName string, mode *serial.Mode) (port SerialPort, newPortNa
 
 	start := time.Now()
 	for {
-		port, err = serial.Open(newPortName, mode)
+		port, err = serialOpen(newPortName, mode)
 		if err == nil {
 
 			break

@@ -41,7 +41,6 @@ func (c *UartConnector) Connect(host string) (Connection, error) {
 	c.connectMutex.Lock()
 	defer c.connectMutex.Unlock()
 
-	serialMode := c.newSerialMode()
 	portName := ""
 	if host == "any" {
 		portName = host
@@ -65,7 +64,7 @@ func (c *UartConnector) Connect(host string) (Connection, error) {
 	}
 
 	// Else open a new connection
-	conn := newSerialConnection(portName, serialMode)
+	conn := newSerialConnection(portName, c.UartParams)
 	c.connections = append(c.connections, conn)
 	err := conn.Open()
 	if err != nil {
