@@ -85,15 +85,16 @@ func receiveLoop(ctx context.Context, conn Connection) {
 			return
 		}
 
+		if err == io.EOF {
+			continue
+		}
+
 		if err != nil {
-			// Do not close the connection, this might happen during reopening of the serial port
-			// TODO: An "Access is denied." error indicates that the UART is not reachable. So reopening would be an option
-			// We could always stop the receive loop before reopening and close the connection here
 			// This is not a warning, since it happens on every reconnect for blocking connections
 			log.WithError(err).Debug("Failed to receive message in receive loop")
-			time.Sleep(100 * time.Millisecond)
-			start = time.Now()
-			continue
+
+			// We return on error, a reconnect has to restart the receive loop as well
+			return
 		}
 		start = time.Now()
 

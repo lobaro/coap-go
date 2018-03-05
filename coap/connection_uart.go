@@ -114,11 +114,15 @@ func (c *serialConnection) Open() error {
 	c.setPort(port)
 	c.open = true // Now we can actually send and receive data
 
+	c.startReceiveLoop()
+	go c.keepAlive()
+	return nil
+}
+
+func (c *serialConnection) startReceiveLoop() {
 	receiveLoopCtx, cancelReceiveLoop := context.WithCancel(context.Background())
 	c.cancelReceiveLoop = cancelReceiveLoop
 	go receiveLoop(receiveLoopCtx, c)
-	go c.keepAlive()
-	return nil
 }
 
 func (c *serialConnection) keepAlive() {
@@ -174,6 +178,10 @@ func (c *serialConnection) reopenSerialPort() error {
 	log.WithField("port", c.portName).Debug("Port opened.")
 
 	c.setPort(port)
+
+	// Restart receive loop
+	c.cancelReceiveLoop()
+	c.startReceiveLoop()
 
 	return nil
 }
