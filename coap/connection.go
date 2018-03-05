@@ -86,6 +86,8 @@ func receiveLoop(ctx context.Context, conn Connection) {
 		}
 
 		if err == io.EOF {
+			time.Sleep(100 * time.Millisecond)
+			start = time.Now()
 			continue
 		}
 
