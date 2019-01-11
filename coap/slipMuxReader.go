@@ -4,7 +4,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/Lobaro/slip"
+	"github.com/lobaro/slip"
 )
 
 var SlipMuxLogDiagnostic bool

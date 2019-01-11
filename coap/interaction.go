@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/Lobaro/coap-go/coapmsg"
+	"github.com/lobaro/coap-go/coapmsg"
 	"sync"
 	"time"
 )

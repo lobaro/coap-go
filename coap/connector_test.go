@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Lobaro/coap-go/coapmsg"
+	"github.com/lobaro/coap-go/coapmsg"
 	"github.com/pkg/errors"
 )
 

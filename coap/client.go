@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Lobaro/coap-go/coapmsg"
-	"github.com/Sirupsen/logrus"
+	"github.com/lobaro/coap-go/coapmsg"
+	"github.com/sirupsen/logrus"
 )
 
 // RoundTripper is an interface representing the ability to execute a

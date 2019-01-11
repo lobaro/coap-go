@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	coap "github.com/Lobaro/coap-go/coap-old"
+	coap "github.com/lobaro/coap-go/coap-old"
 )
 
 func main() {

@@ -1,7 +1,7 @@
 package liblobarocoap
 
 /*
-#cgo LDFLAGS: "-LC:/dev/cpath/github.com/Lobaro/lobaro-coap" -L${SRCDIR} -llobaro_coap
+#cgo LDFLAGS: "-LC:/dev/cpath/github.com/lobaro/lobaro-coap" -L${SRCDIR} -llobaro_coap
 #include "liblobaro_coap.h"
 #include "coap_options.h"
 #include <stdio.h>
@@ -29,8 +29,8 @@ import "C"
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/Lobaro/coap-go/coapmsg"
-	"github.com/Sirupsen/logrus"
+	"github.com/lobaro/coap-go/coapmsg"
+	"github.com/sirupsen/logrus"
 	"log"
 	"net"
 	"time"

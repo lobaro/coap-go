@@ -6,7 +6,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/Lobaro/coap-go/socket"
+	"github.com/lobaro/coap-go/socket"
 )
 
 func main() {

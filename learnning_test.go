@@ -4,8 +4,8 @@ import (
 	"net"
 	"testing"
 
-	coap "github.com/Lobaro/coap-go/coap-old"
-	"github.com/Lobaro/coap-go/coapmsg"
+	coap "github.com/lobaro/coap-go/coap-old"
+	"github.com/lobaro/coap-go/coapmsg"
 )
 
 func TestSetupSocket(t *testing.T) {

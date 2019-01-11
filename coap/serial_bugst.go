@@ -1,6 +1,6 @@
 package coap
 
-import "github.com/Lobaro/go-serial"
+import "github.com/lobaro/go-serial"
 
 func serialStopBits(bits StopBits) serial.StopBits {
 	switch bits {

@@ -8,7 +8,7 @@ import (
 	"io/ioutil"
 	"net/url"
 
-	"github.com/Lobaro/coap-go/coapmsg"
+	"github.com/lobaro/coap-go/coapmsg"
 )
 
 // A Request represents a CoAP request received by a server

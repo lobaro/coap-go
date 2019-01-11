@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Lobaro/coap-go/coapmsg"
-	"github.com/Sirupsen/logrus"
+	"github.com/lobaro/coap-go/coapmsg"
+	"github.com/sirupsen/logrus"
 )
 
 func TestTransportFail(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 
 	"time"
 
-	"github.com/Lobaro/coap-go/coapmsg"
+	"github.com/lobaro/coap-go/coapmsg"
 )
 
 // Connection represents an interface to identify

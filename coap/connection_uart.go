@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Lobaro/slip"
+	"github.com/lobaro/slip"
 )
 
 // UartKeepAliveInterval defines how often the serial port is reopened.

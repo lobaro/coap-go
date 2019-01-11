@@ -14,9 +14,9 @@ import (
 
 	"context"
 
-	"github.com/Lobaro/coap-go/coapmsg"
-	"github.com/Sirupsen/logrus"
 	"github.com/emirpasic/gods/sets/hashset"
+	"github.com/lobaro/coap-go/coapmsg"
+	"github.com/sirupsen/logrus"
 )
 
 type StopBits byte
