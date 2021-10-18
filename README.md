@@ -2,6 +2,15 @@
 
 This repository contains two parts: The **CoAP Client** and a **GoLang Server adapter**. The client focuses on RS232 connections where data is send via [Slip](https://tools.ietf.org/rfc/rfc1055.txt) and [SlipMUX](https://tools.ietf.org/html/draft-bormann-t2trg-slipmux-01)
 
+## Currently not Maintained
+
+Since we moved to existing more major CoAP implementations, this repo will stay unmaintained.
+
+We recommend:
+
+* https://github.com/plgd-dev/go-coap
+* Plus DTLS: https://github.com/pion/dtls
+
 # GoLang CoAP RS232 Client 
 Currently only RS232 is supported. Transports for other Protocols like TCP/IP and UDP are planned.
 
